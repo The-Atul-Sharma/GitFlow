@@ -91,8 +91,7 @@ async function runGit(args: string[], cwd: string): Promise<string> {
       cwd,
       maxBuffer: MAX_BUFFER,
     });
-    const text = typeof stdout === 'string' ? stdout : stdout.toString('utf8');
-    return text.trimEnd();
+    return stdout.trimEnd();
   } catch (err) {
     const failure = err as ExecFailure;
     const stderr = readStderr(failure).trim();
@@ -254,8 +253,7 @@ export function createGitClient(cwd?: string): GitClient {
           ['rev-parse', '--is-inside-work-tree'],
           { cwd: workDir, maxBuffer: MAX_BUFFER },
         );
-        const text = typeof stdout === 'string' ? stdout : stdout.toString('utf8');
-        return text.trim() === 'true';
+        return stdout.trim() === 'true';
       } catch {
         return false;
       }
