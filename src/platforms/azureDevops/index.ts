@@ -53,7 +53,7 @@ const configSchema = z.object({
     .string()
     .min(
       1,
-      'Azure DevOps PAT is empty. Run: npx gitflow-ai auth and store AZURE_DEVOPS_PAT.',
+      'Azure DevOps PAT is empty. Run: npx gitflow auth and store AZURE_DEVOPS_PAT.',
     ),
 });
 
@@ -164,7 +164,7 @@ async function throwForStatus(
 
   if (response.status === 401) {
     throw new AzureDevOpsError(
-      'Azure DevOps PAT invalid or expired. Run: npx gitflow-ai auth',
+      'Azure DevOps PAT invalid or expired. Run: npx gitflow auth',
       401,
     );
   }

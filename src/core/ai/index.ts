@@ -84,7 +84,7 @@ function requireApiKey(provider: Exclude<ProviderName, 'ollama'>): string {
   const value = process.env[envName];
   if (!value) {
     throw new AIProviderError(
-      `${envName} not found. Run: npx GitFlow auth`,
+      `${envName} not found. Run: npx gitflow auth`,
       provider,
     );
   }

@@ -1,7 +1,7 @@
 # Module: git
 
 ## Purpose
-Wrap git operations needed across GitFlow modules so we have one
+Wrap git operations needed across gitflow modules so we have one
 tested place that talks to git, not scattered shell calls everywhere.
 
 ## Public API

@@ -85,7 +85,7 @@ export function createGitHubPlatform(
 
 ## Error cases
 - 401 Unauthorized → GitHubError "GitHub token invalid or expired.
-  Run: npx gitflow-ai auth"
+  Run: npx gitflow auth"
 - 403 Forbidden → GitHubError "GitHub token lacks required permissions.
   Needs: repo, pull_requests"
 - 404 Not Found → GitHubError "PR #{prId} not found in {owner}/{repo}"

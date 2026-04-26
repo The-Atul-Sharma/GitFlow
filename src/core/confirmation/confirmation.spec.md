@@ -2,7 +2,7 @@
 
 ## Purpose
 Provide interactive y/n/edit/regenerate prompts for the CLI so every 
-gitflow-ai action has consistent UX. Also supports auto and dryrun modes 
+gitflow action has consistent UX. Also supports auto and dryrun modes 
 where prompts are skipped.
 
 ## Public API
@@ -47,7 +47,7 @@ export function createConfirmation(): Confirmation
 ### dryrun
 - Print preview to stdout
 - Return { action: 'no' } so the action does not execute
-- Useful for previewing what gitflow-ai would do
+- Useful for previewing what gitflow would do
 
 ## UI requirements
 - Use enquirer for the prompt UI

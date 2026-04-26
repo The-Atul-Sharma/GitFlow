@@ -1,7 +1,7 @@
 # Module: ai
 
 ## Purpose
-Abstract AI provider interface so GitFlow can swap between
+Abstract AI provider interface so gitflow can swap between
 Claude, OpenAI, Gemini, and Ollama via config.
 
 ## Public API
@@ -48,7 +48,7 @@ AIConfig comes from gitflow.config.yml:
 
 ## Error cases
 - Missing API key → AIProviderError "ANTHROPIC_API_KEY not found.
-  Run: npx GitFlow auth"
+  Run: npx gitflow auth"
 - Network failure → wrap original error with provider name
 - Invalid model name → throw with list of valid models for provider
 

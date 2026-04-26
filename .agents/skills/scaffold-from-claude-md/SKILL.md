@@ -1,7 +1,7 @@
 
 ---
 name: scaffold-from-claude-md
-description: Scaffold the GitFlow project structure from CLAUDE.md
+description: Scaffold the gitflow project structure from CLAUDE.md
 ---
 
 Read the CLAUDE.md file at the project root and scaffold the project

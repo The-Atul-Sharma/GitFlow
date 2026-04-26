@@ -128,7 +128,7 @@ All requests must include: `?api-version=7.0`
 
 ## Error cases
 - 401 → AzureDevOpsError "Azure DevOps PAT invalid or expired.
-  Run: npx gitflow-ai auth"
+  Run: npx gitflow auth"
 - 403 → AzureDevOpsError "PAT lacks required permissions.
   Needs: Code (Read & Write), Pull Request Threads (Read & Write)"
 - 404 PR → AzureDevOpsError "PR #{prId} not found in {org}/{project}"

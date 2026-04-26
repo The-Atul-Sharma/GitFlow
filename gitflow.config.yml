@@ -1,0 +1,39 @@
+ai:
+  provider: claude
+  model: claude-sonnet-4-6
+  fallback: ollama
+
+platform:
+  type: github
+  owner: the-atul-sharma
+  repo: gitflow
+  
+  #type: azure-devops
+  #org = mycompany
+  #project = myproject
+  #repositoryId = myrepo
+
+mode:
+  commit: interactive
+  pr_create: interactive
+  pr_description: auto
+  pr_review: auto
+  comment_fix: interactive
+
+review:
+  rules:
+    - id: no-console-logs
+      description: No console.log in production code
+      severity: warning
+    - id: no-hardcoded-secrets
+      description: No hardcoded API keys or tokens
+      severity: blocker
+    - id: no-any-in-typescript
+      description: No :any type annotations
+      severity: warning
+    - id: tests-required
+      description: New exported functions must have tests
+      severity: info
+
+conventions:
+  commit_style: conventional-commits

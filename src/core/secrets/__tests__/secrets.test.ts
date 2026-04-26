@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SecretKey, Secrets } from '../index.ts';
 
-const SERVICE_NAME = 'GitFlow';
+const SERVICE_NAME = 'gitflow';
 
 interface KeytarMock {
   setPassword: ReturnType<typeof vi.fn>;
@@ -129,7 +129,7 @@ describe('get', () => {
 });
 
 describe('set', () => {
-  it('writes the value to the keychain under the GitFlow service', async () => {
+  it('writes the value to the keychain under the gitflow service', async () => {
     const keytar = makeKeytarMock();
     const { createSecrets } = await importWithKeytar(keytar);
 
@@ -284,7 +284,7 @@ describe('SecretNotFoundError', () => {
     expect(err.name).toBe('SecretNotFoundError');
     expect(err.key).toBe('ANTHROPIC_API_KEY');
     expect(err.message).toBe(
-      'Secret ANTHROPIC_API_KEY not found. Run: npx GitFlow auth',
+      'Secret ANTHROPIC_API_KEY not found. Run: npx gitflow auth',
     );
   });
 });

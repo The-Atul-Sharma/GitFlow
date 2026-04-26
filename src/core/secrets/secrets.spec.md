@@ -1,7 +1,7 @@
 # Module: secrets
 
 ## Purpose
-Securely store and retrieve API keys and tokens needed by GitFlow.
+Securely store and retrieve API keys and tokens needed by gitflow.
 Supports OS keychain (preferred) and environment variables (fallback).
 
 ## Public API
@@ -35,7 +35,7 @@ When calling get():
 3. If still not found, return null
 
 ## Rules
-- Service name in keychain is "GitFlow"
+- Service name in keychain is "gitflow"
 - Never log secret values, only key names
 - Never write secrets to disk in plain text
 - delete() must remove from keychain only, not env vars
@@ -44,7 +44,7 @@ When calling get():
 ## Error cases
 - keytar fails to load → fall back to env-only mode silently
 - Missing required secret → throw SecretNotFoundError with message
-  "Secret <KEY> not found. Run: npx GitFlow auth"
+  "Secret <KEY> not found. Run: npx gitflow auth"
 
 ## Tests required
 - get returns value from keychain when present
