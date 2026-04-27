@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "configurations": [
+    {
+      "name": "Run gitflow extension (local)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
+      "outFiles": ["${workspaceFolder}/dist/**/*.js"],
+      "preLaunchTask": "npm: build"
+    }
+  ]
+}
