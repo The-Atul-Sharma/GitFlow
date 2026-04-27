@@ -1,7 +1,7 @@
 # gitflow
 
-CLI tool that automates git workflow — commit messages, PR creation, PR
-descriptions, and PR reviews — using configurable AI providers.
+CLI tool that automates git workflow, commit messages, PR creation, PR
+descriptions, and PR reviews using configurable AI providers.
 
 ## Features
 
