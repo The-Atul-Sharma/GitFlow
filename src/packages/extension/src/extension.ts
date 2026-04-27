@@ -61,6 +61,31 @@ export class ExtensionError extends Error {
 
 export const VIEW_ID = 'gitflow.panel';
 
+export const FIRST_LAUNCH_STATE_KEY = 'gitflow.firstLaunchComplete';
+
+export type SecretKey =
+  | 'ANTHROPIC_API_KEY'
+  | 'OPENAI_API_KEY'
+  | 'GEMINI_API_KEY'
+  | 'GITHUB_TOKEN'
+  | 'AZURE_DEVOPS_PAT'
+  | 'GITLAB_TOKEN';
+
+interface SecretDescriptor {
+  key: SecretKey;
+  label: string;
+  detail: string;
+}
+
+export const SECRET_DESCRIPTORS: ReadonlyArray<SecretDescriptor> = [
+  { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key', detail: 'Required for Claude models' },
+  { key: 'OPENAI_API_KEY', label: 'OpenAI API key', detail: 'Required for GPT models' },
+  { key: 'GEMINI_API_KEY', label: 'Gemini API key', detail: 'Required for Gemini models' },
+  { key: 'GITHUB_TOKEN', label: 'GitHub token', detail: 'Required to create / review GitHub PRs' },
+  { key: 'AZURE_DEVOPS_PAT', label: 'Azure DevOps PAT', detail: 'Required for Azure DevOps PRs' },
+  { key: 'GITLAB_TOKEN', label: 'GitLab token', detail: 'Required for GitLab MRs' },
+];
+
 export const DEFAULT_PIPELINE: ReadonlyArray<PipelineStep> = [
   { id: 'commit', label: 'Commit message', status: 'idle' },
   { id: 'pr', label: 'PR created', status: 'idle' },
@@ -103,6 +128,154 @@ export const MODEL_OPTIONS: ReadonlyArray<ModelOption> = [
 ];
 
 const TERMINAL_NAME = 'gitflow';
+
+const SECRETS_SERVICE_NAME = 'gitflow';
+
+interface KeytarLike {
+  setPassword(service: string, account: string, password: string): Promise<void>;
+  getPassword(service: string, account: string): Promise<string | null>;
+  deletePassword(service: string, account: string): Promise<boolean>;
+}
+
+let keytarPromise: Promise<KeytarLike | null> | null = null;
+
+async function loadKeytar(): Promise<KeytarLike | null> {
+  if (keytarPromise) return keytarPromise;
+  keytarPromise = (async () => {
+    try {
+      const mod = (await import('keytar')) as KeytarLike | { default: KeytarLike };
+      return 'default' in mod && mod.default ? mod.default : (mod as KeytarLike);
+    } catch {
+      return null;
+    }
+  })();
+  return keytarPromise;
+}
+
+/**
+ * Whether a secret is present in the OS keychain. Mirrors what the CLI's
+ * core/secrets store will see when spawned from the extension's terminal.
+ */
+export async function hasSecret(key: SecretKey): Promise<boolean> {
+  const keytar = await loadKeytar();
+  if (!keytar) return false;
+  const value = await keytar.getPassword(SECRETS_SERVICE_NAME, key);
+  return Boolean(value);
+}
+
+/** Persist a secret to the OS keychain under the gitflow service. */
+export async function setSecret(key: SecretKey, value: string): Promise<void> {
+  const keytar = await loadKeytar();
+  if (!keytar) {
+    throw new ExtensionError(
+      'Cannot save API key: native keychain module (keytar) failed to load. On Linux, install libsecret-1-dev and reload VS Code.',
+    );
+  }
+  await keytar.setPassword(SECRETS_SERVICE_NAME, key, value);
+}
+
+/** Remove a secret from the OS keychain. No-op if it was never set. */
+export async function deleteSecret(key: SecretKey): Promise<void> {
+  const keytar = await loadKeytar();
+  if (!keytar) return;
+  await keytar.deletePassword(SECRETS_SERVICE_NAME, key);
+}
+
+/**
+ * Show an InputBox to capture a single secret and persist it. Empty input
+ * cancels the prompt without touching the existing value.
+ */
+export async function promptForSecret(descriptor: SecretDescriptor): Promise<boolean> {
+  const existed = await hasSecret(descriptor.key);
+  const value = await vscode.window.showInputBox({
+    prompt: `${descriptor.label} — ${descriptor.detail}`,
+    placeHolder: existed ? 'Leave empty to keep current value' : 'Paste the key here',
+    password: true,
+    ignoreFocusOut: true,
+  });
+  if (value === undefined) return false;
+  if (value === '') return existed;
+  await setSecret(descriptor.key, value);
+  await vscode.window.showInformationMessage(`gitflow: Saved ${descriptor.label}.`);
+  return true;
+}
+
+/**
+ * Top-level "manage API keys" flow: lists every supported secret with its
+ * current state, lets the user pick one to set or clear. Loops until the
+ * user dismisses the picker.
+ */
+export async function manageApiKeys(): Promise<void> {
+  while (true) {
+    const items: Array<vscode.QuickPickItem & { descriptor?: SecretDescriptor; action?: 'clear' }> = [];
+    for (const d of SECRET_DESCRIPTORS) {
+      const set = await hasSecret(d.key);
+      items.push({
+        label: `${set ? '$(check)' : '$(circle-large-outline)'} ${d.label}`,
+        description: set ? 'set' : 'not set',
+        detail: d.detail,
+        descriptor: d,
+      });
+    }
+    items.push({ label: '$(trash) Clear a saved key…', action: 'clear' });
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: 'Select an API key to set or update',
+      ignoreFocusOut: true,
+    });
+    if (!picked) return;
+
+    if (picked.action === 'clear') {
+      await clearSecretFlow();
+      continue;
+    }
+    if (picked.descriptor) {
+      await promptForSecret(picked.descriptor);
+    }
+  }
+}
+
+async function clearSecretFlow(): Promise<void> {
+  const items: Array<vscode.QuickPickItem & { descriptor: SecretDescriptor }> = [];
+  for (const d of SECRET_DESCRIPTORS) {
+    if (await hasSecret(d.key)) {
+      items.push({ label: d.label, detail: d.detail, descriptor: d });
+    }
+  }
+  if (items.length === 0) {
+    await vscode.window.showInformationMessage('gitflow: No saved keys to clear.');
+    return;
+  }
+  const picked = await vscode.window.showQuickPick(items, {
+    placeHolder: 'Select a key to remove from the keychain',
+    ignoreFocusOut: true,
+  });
+  if (!picked) return;
+  await deleteSecret(picked.descriptor.key);
+  await vscode.window.showInformationMessage(`gitflow: Cleared ${picked.descriptor.label}.`);
+}
+
+/**
+ * On the first activation in a given VS Code profile, ask the user to
+ * configure at least one AI provider key so the CLI can authenticate when
+ * spawned from the extension. Sets a globalState flag so this runs once.
+ */
+export async function runFirstLaunchSetupIfNeeded(
+  context: vscode.ExtensionContext,
+): Promise<void> {
+  const done = context.globalState.get<boolean>(FIRST_LAUNCH_STATE_KEY);
+  if (done) return;
+
+  const choice = await vscode.window.showInformationMessage(
+    'gitflow needs an AI provider API key to run. Set it now?',
+    'Set up keys',
+    'Later',
+  );
+  if (choice === 'Set up keys') {
+    await manageApiKeys();
+  }
+  await context.globalState.update(FIRST_LAUNCH_STATE_KEY, true);
+}
 
 const runCommandSchema = z.object({
   command: z
@@ -457,7 +630,7 @@ export function registerCommands(
         await pickAndSwitchModel(sidebar);
       }),
     ),
-    vscode.commands.registerCommand('gitflow.auth', wrap(() => runCommand('auth'))),
+    vscode.commands.registerCommand('gitflow.auth', wrap(manageApiKeys)),
     vscode.commands.registerCommand('gitflow.showPanel', () =>
       vscode.commands.executeCommand(`${VIEW_ID}.focus`),
     ),
@@ -495,6 +668,8 @@ export function activate(context: vscode.ExtensionContext): ActivateInternals {
   );
 
   registerCommands(context, { sidebar, statusBar });
+
+  void runFirstLaunchSetupIfNeeded(context);
 
   state.internals = { sidebar, statusBar };
   return state.internals;

@@ -24,7 +24,7 @@ to open a terminal — everything works from inside VS Code.
 | gitflow.generateSpec           | gitflow: Generate spec for active file |
 | gitflow.generateClaudeMd       | gitflow: Generate CLAUDE.md     |
 | gitflow.switchModel            | gitflow: Switch AI model        |
-| gitflow.auth                   | gitflow: Setup auth keys        |
+| gitflow.auth                   | gitflow: Setup or update API keys |
 | gitflow.showPanel              | gitflow: Show gitflow panel  |
 | gitflow.status                 | gitflow: Show status            |
 
@@ -199,6 +199,25 @@ Shows at the bottom of VS Code:
 }
 ```
 
+## API key management
+
+Inside VS Code the user never runs `gitflow auth`. The extension owns the
+secret-setup UX:
+
+- On first activation per VS Code profile, the extension prompts the user
+  to set up API keys. A `gitflow.firstLaunchComplete` flag in
+  `context.globalState` ensures this runs once.
+- The `gitflow.auth` command opens the same flow and can be re-run any
+  time to set, update, or clear keys.
+- Keys are written to the OS keychain via `keytar` under the service name
+  `gitflow`, using the same account names (`ANTHROPIC_API_KEY`,
+  `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`, `AZURE_DEVOPS_PAT`,
+  `GITLAB_TOKEN`) that `core/secrets` reads. CLI subprocesses spawned
+  from the extension's terminal therefore see the keys without any
+  additional config.
+- Prompts use `vscode.window.showInputBox({ password: true })` so values
+  never appear in the terminal or output channels.
+
 ## Rules
 - Extension host never imports CLI modules directly — always spawns process
 - Webview built separately with Vite, loaded as compiled HTML
@@ -207,6 +226,9 @@ Shows at the bottom of VS Code:
 - Status bar always visible when extension active
 - Model switcher reads current model from gitflow.config.yml on open
 - Fix button in webview passes exact commentId to CLI
+- API keys are configured inside VS Code (first-launch prompt or
+  `gitflow.auth`), never by asking the user to run `gitflow auth` in a
+  terminal
 
 ## Tests required
 - Each command spawns terminal with correct CLI command
