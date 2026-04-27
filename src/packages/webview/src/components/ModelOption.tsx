@@ -1,10 +1,9 @@
 interface ModelOptionProps {
-  provider: string;
-  model: string;
+  value: string;
   label: string;
 }
 
-/** Single <option> in the ModelSwitcher dropdown. Uses provider:model as value. */
-export function ModelOption({ provider, model, label }: ModelOptionProps) {
-  return <option value={`${provider}:${model}`}>{label}</option>;
+/** Single <option> in the ModelSwitcher dropdown. Uses an encoded JSON value. */
+export function ModelOption({ value, label }: ModelOptionProps) {
+  return <option value={value}>{label}</option>;
 }

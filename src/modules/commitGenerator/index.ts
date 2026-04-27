@@ -12,6 +12,7 @@ export interface CommitGeneratorInput {
   git: GitClient;
   confirmation: Confirmation;
   mode: ConfirmMode;
+  shouldCreateCommit?: boolean;
 }
 
 export interface CommitGeneratorResult {
@@ -73,6 +74,7 @@ const inputSchema = z.object({
     message:
       'mode must be one of "interactive", "auto", or "dryrun". Pass mode from the CLI flag (--auto / --dry-run).',
   }),
+  shouldCreateCommit: z.boolean().optional(),
 });
 
 function buildPrompt(diff: string, recentMessages: string[]): string {
@@ -86,6 +88,75 @@ function buildPrompt(diff: string, recentMessages: string[]): string {
     `Rules:\n` +
     `- First line: <type>(<scope>)?: <subject>\n` +
     `- Allowed types: ${CONVENTIONAL_TYPES.join(', ')}\n` +
+    `- HARD LIMIT: first line must be <= ${HEADER_MAX_LENGTH} characters\n` +
+    `- If needed, shorten the subject so the first line fits <= ${HEADER_MAX_LENGTH}\n` +
+    `- Subject: imperative mood, lowercase, no trailing period, <= 72 chars\n` +
+    `- Optional body: blank line after header, wrap at 72 chars, explain *why*\n` +
+    `- No code fences, no surrounding quotes, no preface\n\n` +
+    recentBlock +
+    `Staged diff:\n${diff}\n\n` +
+    `Return ONLY the commit message.`
+  );
+}
+
+function scopeFromPath(path: string): string {
+  const clean = path.replace(/^\.?\//, '');
+  const parts = clean.split('/').filter((p) => p.length > 0);
+  if (parts.length === 0) return 'root';
+  if (parts[0] === 'src') {
+    const srcParts = parts.slice(1);
+    if (srcParts[0] === 'packages' && srcParts[1]) {
+      return `packages/${srcParts[1]}`;
+    }
+    return srcParts[0] ?? 'src';
+  }
+  if (parts[0] === 'specs') return 'specs';
+  return parts[0] ?? 'root';
+}
+
+function decideCommitScope(stagedFiles: string[]): string | null {
+  if (stagedFiles.length === 0) return null;
+  const counts = new Map<string, number>();
+  for (const file of stagedFiles) {
+    const scope = scopeFromPath(file);
+    counts.set(scope, (counts.get(scope) ?? 0) + 1);
+  }
+  let winnerScope = '';
+  let winnerCount = 0;
+  for (const [scope, count] of counts.entries()) {
+    if (count > winnerCount) {
+      winnerScope = scope;
+      winnerCount = count;
+    }
+  }
+  if (winnerCount === 0) return null;
+  if (stagedFiles.length === 1) return winnerScope;
+  const ratio = winnerCount / stagedFiles.length;
+  return ratio >= 0.7 ? winnerScope : null;
+}
+
+function buildPromptWithScope(
+  diff: string,
+  recentMessages: string[],
+  requiredScope: string | null,
+): string {
+  const scopeRule =
+    requiredScope === null
+      ? '- Scope policy: omit scope when changes span multiple areas. Use "<type>: <subject>"\n'
+      : `- Scope policy: use scope "${requiredScope}" exactly. Use "<type>(${requiredScope}): <subject>"\n`;
+  const recentBlock = recentMessages.length
+    ? `Recent commit messages on this branch (match their tone and style):\n${recentMessages
+        .map((m) => `- ${m}`)
+        .join('\n')}\n\n`
+    : '';
+  return (
+    `You are a senior engineer writing a Conventional Commit message.\n\n` +
+    `Rules:\n` +
+    `- First line: <type>(<scope>)?: <subject>\n` +
+    `- Allowed types: ${CONVENTIONAL_TYPES.join(', ')}\n` +
+    `${scopeRule}` +
+    `- HARD LIMIT: first line must be <= ${HEADER_MAX_LENGTH} characters\n` +
+    `- If needed, shorten the subject so the first line fits <= ${HEADER_MAX_LENGTH}\n` +
     `- Subject: imperative mood, lowercase, no trailing period, <= 72 chars\n` +
     `- Optional body: blank line after header, wrap at 72 chars, explain *why*\n` +
     `- No code fences, no surrounding quotes, no preface\n\n` +
@@ -107,6 +178,57 @@ function cleanMessage(raw: string): string {
     text = text.slice(1, -1).trim();
   }
   return text;
+}
+
+function normalizeHeader(header: string): string {
+  return header.replace(
+    /^((?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([^)]+\))?!?)\s+-\s+(\S.*)$/,
+    '$1: $2',
+  );
+}
+
+function normalizeMessage(message: string): string {
+  const [header = '', ...rest] = message.split('\n');
+  const normalizedHeader = normalizeHeader(header.trim());
+  return [normalizedHeader, ...rest].join('\n').trim();
+}
+
+function truncateHeaderToMaxLength(message: string): string {
+  const [header = '', ...rest] = message.split('\n');
+  if (header.length <= HEADER_MAX_LENGTH) return message;
+  const match = header.match(
+    /^((?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([^)]+\))?!?: )(\S.*)$/,
+  );
+  if (!match) return message;
+  const prefix = match[1] ?? '';
+  const subject = match[2] ?? '';
+  const maxSubjectLength = HEADER_MAX_LENGTH - prefix.length;
+  if (maxSubjectLength <= 0) return message;
+  if (subject.length <= maxSubjectLength) return message;
+  const hardSlice = subject.slice(0, maxSubjectLength).trimEnd();
+  const lastSpace = hardSlice.lastIndexOf(' ');
+  const shortened =
+    lastSpace >= Math.floor(maxSubjectLength * 0.6)
+      ? hardSlice.slice(0, lastSpace).trimEnd()
+      : hardSlice;
+  const rebuiltHeader = `${prefix}${shortened}`;
+  return [rebuiltHeader, ...rest].join('\n').trim();
+}
+
+function enforceScopePolicy(message: string, requiredScope: string | null): string {
+  const [header = '', ...rest] = message.split('\n');
+  const match = header.match(
+    /^((?:feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert))(?:\(([^)]+)\))?(!?):\s+(\S.*)$/,
+  );
+  if (!match) return message;
+  const type = match[1] ?? '';
+  const bang = match[3] ?? '';
+  const subject = match[4] ?? '';
+  const scopedHeader =
+    requiredScope === null
+      ? `${type}${bang}: ${subject}`
+      : `${type}(${requiredScope})${bang}: ${subject}`;
+  return [scopedHeader, ...rest].join('\n').trim();
 }
 
 function validateMessage(message: string): void {
@@ -155,6 +277,7 @@ export function createCommitGenerator(input: CommitGeneratorInput): {
 } {
   const validated = inputSchema.parse(input);
   const { ai, git, confirmation, mode } = validated;
+  const shouldCreateCommit = validated.shouldCreateCommit ?? true;
 
   return {
     async run(): Promise<CommitGeneratorResult> {
@@ -167,11 +290,15 @@ export function createCommitGenerator(input: CommitGeneratorInput): {
 
       const recent = await git.getRecentCommits(RECENT_COMMIT_COUNT);
       const recentMessages = recent.map((c) => c.message);
+      const stagedFiles = await git.getStagedFiles();
+      const requiredScope = decideCommitScope(stagedFiles);
 
       while (true) {
-        const prompt = buildPrompt(diff, recentMessages);
+        const prompt = buildPromptWithScope(diff, recentMessages, requiredScope);
         const raw = await ai.complete(prompt, { temperature: 0.2 });
-        const message = cleanMessage(raw);
+        const message = truncateHeaderToMaxLength(
+          enforceScopePolicy(normalizeMessage(cleanMessage(raw)), requiredScope),
+        );
         validateMessage(message);
 
         if (mode === 'dryrun') {
@@ -186,18 +313,28 @@ export function createCommitGenerator(input: CommitGeneratorInput): {
         });
 
         if (result.action === 'yes') {
-          await git.setCommitMessage(message);
+          if (shouldCreateCommit) {
+            await git.commit(message);
+          } else {
+            await git.setCommitMessage(message);
+          }
           return { status: 'committed', message };
         }
 
         if (result.action === 'edit') {
-          const edited = result.editedText.trim();
+          const edited = truncateHeaderToMaxLength(
+            enforceScopePolicy(normalizeMessage(result.editedText.trim()), requiredScope),
+          );
           if (!edited) {
             throw new CommitGenerationError(
               'Edited commit message is empty. Re-run the command and provide non-empty text in the editor.',
             );
           }
-          await git.setCommitMessage(edited);
+          if (shouldCreateCommit) {
+            await git.commit(edited);
+          } else {
+            await git.setCommitMessage(edited);
+          }
           return { status: 'committed', message: edited };
         }
 
