@@ -3,7 +3,7 @@
   "displayName": "gitflow",
   "description": "AI-powered git workflow automation",
   "version": "1.0.0",
-  "publisher": "gitflow",
+  "publisher": "atsharma",
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=24.0.0"
@@ -11,12 +11,15 @@
   "categories": [
     "Other"
   ],
+  "icon": "media/icon.png",
   "activationEvents": [
-    "onStartupFinished"
+    "*"
   ],
   "main": "./dist/extension.js",
   "scripts": {
-    "build": "tsc -p .",
+    "build:webview": "cd ../webview && npm run build",
+    "copy:webview": "node -e \"const fs=require('node:fs');const path=require('node:path');const src=path.resolve(__dirname,'../webview/dist');const dest=path.resolve(__dirname,'media/webview');fs.rmSync(dest,{recursive:true,force:true});fs.mkdirSync(dest,{recursive:true});fs.cpSync(src,dest,{recursive:true});\"",
+    "build": "npm run build:webview && npm run copy:webview && tsc -p .",
     "watch": "tsc -p . --watch"
   },
   "contributes": {
@@ -42,14 +45,6 @@
         "title": "gitflow: Fix selected comment"
       },
       {
-        "command": "gitflow.generateSpec",
-        "title": "gitflow: Generate spec for active file"
-      },
-      {
-        "command": "gitflow.generateClaudeMd",
-        "title": "gitflow: Generate CLAUDE.md"
-      },
-      {
         "command": "gitflow.switchModel",
         "title": "gitflow: Switch AI model"
       },
@@ -71,7 +66,7 @@
         {
           "id": "gitflow",
           "title": "gitflow",
-          "icon": "$(source-control)"
+          "icon": "media/activity-bar.png"
         }
       ]
     },

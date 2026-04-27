@@ -9,7 +9,13 @@ import yaml from 'js-yaml';
 import minimist from 'minimist';
 import { z } from 'zod';
 
-import { createAIProvider, type ProviderName } from '../core/ai/index.ts';
+import {
+  createAIProvider,
+  withFallback,
+  type AIOptions,
+  type AIProvider,
+  type ProviderName,
+} from '../core/ai/index.ts';
 import {
   createConfirmation,
   type ConfirmMode,
@@ -77,7 +83,13 @@ const aiSectionSchema = z.object({
       'ai.model is empty. Set "ai.model" in gitflow.config.yml to a non-empty model id.',
     ),
   fallback: providerNameSchema.optional(),
-});
+}).refine(
+  (ai) => ai.fallback === undefined || ai.fallback !== ai.provider,
+  {
+    message: 'ai.fallback must be different from ai.provider. Choose another provider or remove fallback.',
+    path: ['fallback'],
+  },
+);
 
 const platformSectionSchema = z.object({
   type: platformTypeSchema,
@@ -150,6 +162,13 @@ const PROVIDER_SECRET: Record<Exclude<ProviderName, 'ollama'>, SecretKey> = {
   claude: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   gemini: 'GEMINI_API_KEY',
+};
+
+const DEFAULT_PROVIDER_MODEL: Record<ProviderName, string> = {
+  claude: 'claude-sonnet-4-6',
+  openai: 'gpt-4o',
+  gemini: 'gemini-2.0-flash',
+  ollama: 'llama3',
 };
 
 const HELP_TEXT = `gitflow — automate your git workflow with AI
@@ -275,14 +294,40 @@ async function ensureAiSecret(
   config: gitflowConfig,
   secrets: Secrets,
 ): Promise<void> {
-  if (config.ai.provider === 'ollama') return;
-  const key = PROVIDER_SECRET[config.ai.provider];
-  if (process.env[key]) return;
-  const value = await secrets.get(key);
-  if (!value) {
-    throw new SecretNotFoundError(key);
+  const requiredProviders: ProviderName[] = [config.ai.provider];
+  if (config.ai.fallback) {
+    requiredProviders.push(config.ai.fallback);
   }
-  process.env[key] = value;
+  for (const provider of requiredProviders) {
+    if (provider === 'ollama') continue;
+    const key = PROVIDER_SECRET[provider];
+    if (process.env[key]) continue;
+    const value = await secrets.get(key);
+    if (!value) {
+      throw new SecretNotFoundError(key);
+    }
+    process.env[key] = value;
+  }
+}
+
+function createConfiguredAI(config: gitflowConfig): AIProvider {
+  const primary = createAIProvider({
+    provider: config.ai.provider,
+    model: config.ai.model,
+  });
+  if (!config.ai.fallback || config.ai.fallback === config.ai.provider) {
+    return primary;
+  }
+  const fallback = createAIProvider({
+    provider: config.ai.fallback,
+    model: DEFAULT_PROVIDER_MODEL[config.ai.fallback],
+  });
+  return {
+    name: primary.name,
+    async complete(prompt: string, options?: AIOptions): Promise<string> {
+      return withFallback(primary, fallback, prompt, options);
+    },
+  };
 }
 
 async function resolveGitHubConfig(
@@ -433,11 +478,7 @@ async function runCommit(
 ): Promise<void> {
   const secrets = createSecrets();
   await ensureAiSecret(config, secrets);
-  const ai = createAIProvider({
-    provider: config.ai.provider,
-    model: config.ai.model,
-    ...(config.ai.fallback ? { fallback: config.ai.fallback } : {}),
-  });
+  const ai = createConfiguredAI(config);
   const git = createExtendedGitClient(cwd);
   const confirmation = createConfirmation();
 
@@ -446,6 +487,7 @@ async function runCommit(
     git,
     confirmation,
     mode: pickMode(config.mode.commit, hookFlag),
+    shouldCreateCommit: !hookFlag,
   });
 
   const result = await generator.run();
@@ -461,11 +503,7 @@ async function runPr(
 ): Promise<void> {
   const secrets = createSecrets();
   await ensureAiSecret(config, secrets);
-  const ai = createAIProvider({
-    provider: config.ai.provider,
-    model: config.ai.model,
-    ...(config.ai.fallback ? { fallback: config.ai.fallback } : {}),
-  });
+  const ai = createConfiguredAI(config);
   const git = createExtendedGitClient(cwd);
   const confirmation = createConfirmation();
   const platform = await resolvePlatform(config, git, secrets);
@@ -501,11 +539,7 @@ async function runReview(
 ): Promise<void> {
   const secrets = createSecrets();
   await ensureAiSecret(config, secrets);
-  const ai = createAIProvider({
-    provider: config.ai.provider,
-    model: config.ai.model,
-    ...(config.ai.fallback ? { fallback: config.ai.fallback } : {}),
-  });
+  const ai = createConfiguredAI(config);
   const git = createExtendedGitClient(cwd);
   const confirmation = createConfirmation();
   const platform = await resolvePlatform(config, git, secrets);
@@ -535,11 +569,7 @@ async function runFix(
 ): Promise<void> {
   const secrets = createSecrets();
   await ensureAiSecret(config, secrets);
-  const ai = createAIProvider({
-    provider: config.ai.provider,
-    model: config.ai.model,
-    ...(config.ai.fallback ? { fallback: config.ai.fallback } : {}),
-  });
+  const ai = createConfiguredAI(config);
   const git = createExtendedGitClient(cwd);
   const confirmation = createConfirmation();
   const platform = await resolvePlatform(config, git, secrets);
