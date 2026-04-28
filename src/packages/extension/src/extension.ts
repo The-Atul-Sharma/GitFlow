@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { z } from 'zod';
-import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { load as parseYaml } from 'js-yaml';
+import { dump as dumpYaml, load as parseYaml } from 'js-yaml';
 
 export type PipelineStatus = 'idle' | 'running' | 'done' | 'failed';
 
@@ -34,22 +35,38 @@ export interface ExtensionMessageFromWebview {
     | 'fixComment'
     | 'dismissComment'
     | 'switchModel'
-    | 'generateClaudeMd'
-    | 'generateSpec'
+    | 'runCommand'
+    | 'setupKeys'
     | 'showPanel'
     | 'requestState';
   prId?: string;
   commentId?: string;
   provider?: string;
   model?: string;
+  command?: string;
 }
 
 export interface ExtensionMessageToWebview {
-  type: 'pipeline' | 'reviewComplete' | 'modelChanged' | 'state';
-  steps?: PipelineStep[];
+  type:
+    | 'pipelineUpdate'
+    | 'reviewComplete'
+    | 'configUpdate'
+    | 'modelOptionsUpdate'
+    | 'setupStatus'
+    | 'commandRunning'
+    | 'commandDone'
+    | 'commandFailed'
+    | 'state';
+  steps?: Array<{ id: string; name: string; status: PipelineStatus }>;
   issues?: ReviewIssue[];
   provider?: string;
   model?: string;
+  models?: Array<{ label: string; provider: string; model: string }>;
+  command?: string;
+  error?: string;
+  aiConfigured?: boolean;
+  platformConfigured?: boolean;
+  ready?: boolean;
 }
 
 export class ExtensionError extends Error {
@@ -105,7 +122,7 @@ export const MODEL_OPTIONS: ReadonlyArray<ModelOption> = [
     label: 'Claude Opus 4.6',
     detail: 'Most capable, slower',
     provider: 'claude',
-    model: 'claude-opus-4-6',
+    model: 'claude-opus-4-7',
   },
   {
     label: 'GPT-4o',
@@ -114,18 +131,47 @@ export const MODEL_OPTIONS: ReadonlyArray<ModelOption> = [
     model: 'gpt-4o',
   },
   {
-    label: 'Gemini 1.5 Pro',
+    label: 'Gemini 2.5 Pro',
     detail: 'Google — requires GEMINI_API_KEY',
     provider: 'gemini',
-    model: 'gemini-1.5-pro',
+    model: 'gemini-2.5-pro',
   },
   {
-    label: 'Ollama (local)',
-    detail: 'Free, runs on your machine',
-    provider: 'ollama',
-    model: 'llama3',
+    label: 'Gemini 2.0 Flash',
+    detail: 'Google fast model — requires GEMINI_API_KEY',
+    provider: 'gemini',
+    model: 'gemini-2.0-flash',
   },
 ];
+
+interface OllamaTagsResponse {
+  models?: Array<{
+    name?: string;
+    model?: string;
+  }>;
+}
+
+const OLLAMA_TAGS_ENDPOINT = 'http://localhost:11434/api/tags';
+
+async function fetchLocalOllamaModelOptions(): Promise<ModelOption[]> {
+  try {
+    const response = await fetch(OLLAMA_TAGS_ENDPOINT);
+    if (!response.ok) return [];
+    const data = (await response.json()) as OllamaTagsResponse;
+    const installed = (data.models ?? [])
+      .map((entry) => entry.name ?? entry.model ?? '')
+      .filter((name) => name.length > 0);
+    const unique = Array.from(new Set(installed)).sort();
+    return unique.map((model) => ({
+      label: `Ollama: ${model}`,
+      detail: 'Installed locally in Ollama',
+      provider: 'ollama',
+      model,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 const TERMINAL_NAME = 'gitflow';
 
@@ -265,16 +311,39 @@ export async function runFirstLaunchSetupIfNeeded(
 ): Promise<void> {
   const done = context.globalState.get<boolean>(FIRST_LAUNCH_STATE_KEY);
   if (done) return;
+  const aiConfigured =
+    (await hasSecret('ANTHROPIC_API_KEY')) ||
+    (await hasSecret('OPENAI_API_KEY')) ||
+    (await hasSecret('GEMINI_API_KEY'));
+  const platformConfigured =
+    (await hasSecret('GITHUB_TOKEN')) ||
+    (await hasSecret('AZURE_DEVOPS_PAT')) ||
+    (await hasSecret('GITLAB_TOKEN'));
+  if (aiConfigured && platformConfigured) {
+    await context.globalState.update(FIRST_LAUNCH_STATE_KEY, true);
+    return;
+  }
 
   const choice = await vscode.window.showInformationMessage(
-    'gitflow needs an AI provider API key to run. Set it now?',
+    'gitflow needs AI and platform keys before using the panel. Set them now?',
     'Set up keys',
     'Later',
   );
   if (choice === 'Set up keys') {
     await manageApiKeys();
+    const aiConfiguredAfterSetup =
+      (await hasSecret('ANTHROPIC_API_KEY')) ||
+      (await hasSecret('OPENAI_API_KEY')) ||
+      (await hasSecret('GEMINI_API_KEY'));
+    const platformConfiguredAfterSetup =
+      (await hasSecret('GITHUB_TOKEN')) ||
+      (await hasSecret('AZURE_DEVOPS_PAT')) ||
+      (await hasSecret('GITLAB_TOKEN'));
+    if (aiConfiguredAfterSetup && platformConfiguredAfterSetup) {
+      await context.globalState.update(FIRST_LAUNCH_STATE_KEY, true);
+    }
+    return;
   }
-  await context.globalState.update(FIRST_LAUNCH_STATE_KEY, true);
 }
 
 const runCommandSchema = z.object({
@@ -289,6 +358,8 @@ const runCommandSchema = z.object({
       'args must be an array of strings. Stringify any non-string values before passing them in.',
     ),
 });
+
+const panelCommandSchema = z.enum(['commit', 'pr', 'review', 'status']);
 
 const issueSchema = z.object({
   id: z.string().min(1, 'issue.id must be a non-empty string. Use the comment id from the platform API.'),
@@ -306,15 +377,15 @@ const issueSchema = z.object({
 export async function runCommand(command: string, args: string[] = []): Promise<void> {
   const parsed = runCommandSchema.parse({ command, args });
   const terminal = findOrCreateTerminal();
-  terminal.show();
   const line = `npx gitflow ${parsed.command}${parsed.args.length ? ' ' + parsed.args.join(' ') : ''}`;
   terminal.sendText(line);
 }
 
 function findOrCreateTerminal(): vscode.Terminal {
-  const existing = vscode.window.terminals.find((t) => t.name === TERMINAL_NAME);
-  if (existing) return existing;
-  return vscode.window.createTerminal(TERMINAL_NAME);
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return workspaceRoot
+    ? vscode.window.createTerminal({ name: TERMINAL_NAME, cwd: workspaceRoot })
+    : vscode.window.createTerminal(TERMINAL_NAME);
 }
 
 /**
@@ -390,6 +461,42 @@ export async function readCurrentModel(
   }
 }
 
+async function writeCurrentModel(
+  workspaceRoot: string,
+  provider: string,
+  model: string,
+): Promise<void> {
+  const root = z
+    .string()
+    .min(1, 'workspaceRoot must be a non-empty path. Pass workspaceFolders[0].uri.fsPath.')
+    .parse(workspaceRoot);
+  const filePath = join(root, 'gitflow.config.yml');
+  const raw = await readFile(filePath, 'utf8');
+  const parsed = parseYaml(raw);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new ExtensionError('gitflow.config.yml must be a YAML object at the root.');
+  }
+  const next = parsed as Record<string, unknown>;
+  const aiSection = next['ai'];
+  const ai =
+    aiSection && typeof aiSection === 'object' && !Array.isArray(aiSection)
+      ? (aiSection as Record<string, unknown>)
+      : {};
+  ai['provider'] = provider;
+  ai['model'] = model;
+  next['ai'] = ai;
+  await writeFile(filePath, dumpYaml(next), 'utf8');
+}
+
+function resolveWebviewDistUri(extensionUri: vscode.Uri): vscode.Uri | undefined {
+  const candidates = [
+    vscode.Uri.joinPath(extensionUri, 'media', 'webview'),
+    vscode.Uri.joinPath(extensionUri, '..', 'webview', 'dist'),
+    vscode.Uri.joinPath(extensionUri, 'src', 'packages', 'webview', 'dist'),
+  ];
+  return candidates.find((candidate) => existsSync(candidate.fsPath));
+}
+
 /**
  * Sidebar webview provider. Bridges postMessage between the React
  * webview (built separately from the `webview` package) and the
@@ -407,13 +514,35 @@ export class GitFlowSidebarProvider implements vscode.WebviewViewProvider {
     private readonly statusBar: GitFlowStatusBar,
   ) {}
 
+  private async postSetupStatus(): Promise<void> {
+    const aiConfigured =
+      (await hasSecret('ANTHROPIC_API_KEY')) ||
+      (await hasSecret('OPENAI_API_KEY')) ||
+      (await hasSecret('GEMINI_API_KEY'));
+    const platformConfigured =
+      (await hasSecret('GITHUB_TOKEN')) ||
+      (await hasSecret('AZURE_DEVOPS_PAT')) ||
+      (await hasSecret('GITLAB_TOKEN'));
+    this.post({
+      type: 'setupStatus',
+      aiConfigured,
+      platformConfigured,
+      ready: aiConfigured && platformConfigured,
+    });
+  }
+
+  public refreshState(): void {
+    this.postState();
+  }
+
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    const webviewDistUri = resolveWebviewDistUri(this.extensionUri);
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [this.extensionUri],
+      localResourceRoots: webviewDistUri ? [this.extensionUri, webviewDistUri] : [this.extensionUri],
     };
-    webviewView.webview.html = this.renderHtml(webviewView.webview);
+    webviewView.webview.html = this.renderHtml(webviewView.webview, webviewDistUri);
     webviewView.webview.onDidReceiveMessage((message: ExtensionMessageFromWebview) => {
       void this.handleMessage(message);
     });
@@ -433,7 +562,10 @@ export class GitFlowSidebarProvider implements vscode.WebviewViewProvider {
       );
     }
     this.pipeline = next;
-    this.post({ type: 'pipeline', steps: this.pipeline });
+    this.post({
+      type: 'pipelineUpdate',
+      steps: this.pipeline.map((step) => ({ id: step.id, name: step.label, status: step.status })),
+    });
   }
 
   /** Replace the review issues panel and update the status bar count. */
@@ -450,7 +582,7 @@ export class GitFlowSidebarProvider implements vscode.WebviewViewProvider {
   /** Notify the webview that the active model changed. */
   notifyModelChanged(provider: string, model: string): void {
     this.post({
-      type: 'modelChanged',
+      type: 'configUpdate',
       provider: z.string().min(1, 'provider must be non-empty. Use one of the MODEL_OPTIONS providers.').parse(provider),
       model: z.string().min(1, 'model must be non-empty. Use one of the MODEL_OPTIONS model ids.').parse(model),
     });
@@ -458,6 +590,22 @@ export class GitFlowSidebarProvider implements vscode.WebviewViewProvider {
 
   private async handleMessage(message: ExtensionMessageFromWebview): Promise<void> {
     switch (message.type) {
+      case 'runCommand': {
+        const command = panelCommandSchema.parse(message.command);
+        this.post({ type: 'commandRunning', command });
+        try {
+          if (command === 'review') {
+            await promptAndReviewPR();
+          } else {
+            await runCommand(command);
+          }
+          this.post({ type: 'commandDone', command });
+        } catch (error) {
+          const messageText = error instanceof Error ? error.message : String(error);
+          this.post({ type: 'commandFailed', command, error: messageText });
+        }
+        break;
+      }
       case 'fixComment': {
         if (!message.prId || !message.commentId) {
           throw new ExtensionError(
@@ -480,21 +628,21 @@ export class GitFlowSidebarProvider implements vscode.WebviewViewProvider {
             'switchModel requires provider and model. Send both from the ModelSwitcher component.',
           );
         }
-        await runCommand('config set', [
-          `ai.provider ${message.provider}`,
-          `ai.model ${message.model}`,
-        ]);
+        const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        if (!root) {
+          throw new ExtensionError('Open a workspace folder to update gitflow.config.yml.');
+        }
+        await writeCurrentModel(root, message.provider, message.model);
+        await vscode.window.showInformationMessage(`gitflow: Switched model to ${message.provider}/${message.model}.`);
         this.notifyModelChanged(message.provider, message.model);
         break;
       }
-      case 'generateClaudeMd':
-        await runCommand('init');
-        break;
-      case 'generateSpec':
-        await runCommand('spec');
-        break;
       case 'showPanel':
         await vscode.commands.executeCommand(`${VIEW_ID}.focus`);
+        break;
+      case 'setupKeys':
+        await manageApiKeys();
+        await this.postSetupStatus();
         break;
       case 'requestState':
         this.postState();
@@ -503,7 +651,12 @@ export class GitFlowSidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private postState(): void {
-    this.post({ type: 'pipeline', steps: this.pipeline });
+    void this.postSetupStatus();
+    void this.postModelOptions();
+    this.post({
+      type: 'pipelineUpdate',
+      steps: this.pipeline.map((step) => ({ id: step.id, name: step.label, status: step.status })),
+    });
     this.post({ type: 'reviewComplete', issues: this.issues });
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!root) return;
@@ -512,12 +665,38 @@ export class GitFlowSidebarProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  private async postModelOptions(): Promise<void> {
+    const dynamicOllama = await fetchLocalOllamaModelOptions();
+    const merged = [...MODEL_OPTIONS, ...dynamicOllama];
+    const seen = new Set<string>();
+    const deduped = merged.filter((option) => {
+      const key = `${option.provider}:${option.model}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    this.post({
+      type: 'modelOptionsUpdate',
+      models: deduped.map((m) => ({
+        label: m.label,
+        provider: m.provider,
+        model: m.model,
+      })),
+    });
+  }
+
   private post(message: ExtensionMessageToWebview): void {
     void this.view?.webview.postMessage(message);
   }
 
-  private renderHtml(webview: vscode.Webview): string {
+  private renderHtml(webview: vscode.Webview, webviewDistUri?: vscode.Uri): string {
+    const scriptUri = webviewDistUri
+      ? webview.asWebviewUri(vscode.Uri.joinPath(webviewDistUri, 'assets', 'index.js')).toString()
+      : '';
     const csp = `default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src ${webview.cspSource};`;
+    const missingBundleNotice = webviewDistUri
+      ? ''
+      : '<p style="padding:12px;">Webview bundle not found. Run: npm run build in src/packages/extension.</p>';
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -527,6 +706,8 @@ export class GitFlowSidebarProvider implements vscode.WebviewViewProvider {
 </head>
 <body>
   <div id="root"></div>
+  ${missingBundleNotice}
+  ${scriptUri ? `<script type="module" src="${scriptUri}"></script>` : ''}
 </body>
 </html>`;
   }
@@ -549,10 +730,11 @@ export async function pickAndSwitchModel(
     { placeHolder: 'Select AI model' },
   );
   if (!picked) return undefined;
-  await runCommand('config set', [
-    `ai.provider ${picked.provider}`,
-    `ai.model ${picked.model}`,
-  ]);
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!root) {
+    throw new ExtensionError('Open a workspace folder to update gitflow.config.yml.');
+  }
+  await writeCurrentModel(root, picked.provider, picked.model);
   await vscode.window.showInformationMessage(`gitflow: Switched to ${picked.label}`);
   sidebar?.notifyModelChanged(picked.provider, picked.model);
   return { label: picked.label, detail: picked.detail, provider: picked.provider, model: picked.model };
@@ -614,23 +796,18 @@ export function registerCommands(
       }),
     ),
     vscode.commands.registerCommand(
-      'gitflow.generateSpec',
-      wrap(async () => {
-        const active = vscode.window.activeTextEditor?.document.uri.fsPath;
-        await runCommand('spec', active ? [active] : []);
-      }),
-    ),
-    vscode.commands.registerCommand(
-      'gitflow.generateClaudeMd',
-      wrap(() => runCommand('init')),
-    ),
-    vscode.commands.registerCommand(
       'gitflow.switchModel',
       wrap(async () => {
         await pickAndSwitchModel(sidebar);
       }),
     ),
-    vscode.commands.registerCommand('gitflow.auth', wrap(manageApiKeys)),
+    vscode.commands.registerCommand(
+      'gitflow.auth',
+      wrap(async () => {
+        await manageApiKeys();
+        sidebar.refreshState();
+      }),
+    ),
     vscode.commands.registerCommand('gitflow.showPanel', () =>
       vscode.commands.executeCommand(`${VIEW_ID}.focus`),
     ),

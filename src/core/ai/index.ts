@@ -78,6 +78,28 @@ const KNOWN_MODELS: Record<ProviderName, readonly string[]> = {
 };
 
 const OLLAMA_ENDPOINT = 'http://localhost:11434/api/generate';
+const OLLAMA_TAGS_ENDPOINT = 'http://localhost:11434/api/tags';
+
+interface OllamaTagsResponse {
+  models?: Array<{
+    name?: string;
+    model?: string;
+  }>;
+}
+
+async function listInstalledOllamaModels(): Promise<string[]> {
+  try {
+    const response = await fetch(OLLAMA_TAGS_ENDPOINT);
+    if (!response.ok) return [];
+    const data = (await response.json()) as OllamaTagsResponse;
+    const names = (data.models ?? [])
+      .map((m) => m.name ?? m.model ?? '')
+      .filter((name) => name.length > 0);
+    return Array.from(new Set(names)).sort();
+  } catch {
+    return [];
+  }
+}
 
 function requireApiKey(provider: Exclude<ProviderName, 'ollama'>): string {
   const envName = ENV_KEY[provider];
@@ -103,6 +125,17 @@ function looksLikeModelError(err: unknown): boolean {
   );
 }
 
+function looksLikeQuotaOrRateLimitError(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes('429') ||
+    msg.includes('too many requests') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('rate limit') ||
+    msg.includes('resource_exhausted')
+  );
+}
+
 function wrapProviderError(
   err: unknown,
   provider: ProviderName,
@@ -113,6 +146,13 @@ function wrapProviderError(
     const valid = KNOWN_MODELS[provider].join(', ');
     throw new AIProviderError(
       `Invalid model "${model}" for ${provider}. Set "model" in gitflow.config.yml to one of: ${valid}.`,
+      provider,
+    );
+  }
+  if (looksLikeQuotaOrRateLimitError(err)) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new AIProviderError(
+      `${provider} quota/rate-limit reached for model "${model}": ${reason}. Retry later, switch to another model/provider, or configure ai.fallback in gitflow.config.yml.`,
       provider,
     );
   }
@@ -293,9 +333,14 @@ class OllamaProvider implements AIProvider {
     if (!response.ok) {
       const errorText = await response.text().catch(() => '');
       if (response.status === 404 || /model.*not found/i.test(errorText)) {
+        const installed = await listInstalledOllamaModels();
         const valid = KNOWN_MODELS.ollama.join(', ');
+        const installedMessage =
+          installed.length > 0
+            ? `installed locally: ${installed.join(', ')}`
+            : 'no local models found';
         throw new AIProviderError(
-          `Invalid model "${this.model}" for ollama. Pull it first: ollama pull ${this.model} (known examples: ${valid}).`,
+          `Invalid model "${this.model}" for ollama. Pull it first: ollama pull ${this.model} (known examples: ${valid}; ${installedMessage}).`,
           'ollama',
         );
       }

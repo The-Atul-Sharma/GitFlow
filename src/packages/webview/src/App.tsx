@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { ExtensionMessage, InlineIssue, PipelineStep } from './types.js';
+import type { ExtensionMessage, InlineIssue, ModelEntry, PipelineStep } from './types.js';
 import { extensionMessageSchema } from './types.js';
 import { sendMessage } from './vsCodeApi.js';
 import { ensureSpinnerKeyframes, layout } from './styles.js';
 import { PipelineStatus } from './components/PipelineStatus.js';
 import { ReviewCommentList } from './components/ReviewCommentList.js';
 import { ModelSwitcher } from './components/ModelSwitcher.js';
-import { SpecTools } from './components/SpecTools.js';
 
 interface CurrentModel {
   provider: string;
@@ -18,6 +17,9 @@ interface AppProps {
 }
 
 const DEFAULT_MODEL: CurrentModel = { provider: 'claude', model: 'claude-sonnet-4-6' };
+const DEFAULT_MODEL_OPTIONS: ReadonlyArray<ModelEntry> = [
+  { label: 'Claude Sonnet 4.6', provider: 'claude', model: 'claude-sonnet-4-6' },
+];
 
 /**
  * Root webview component. Owns all state, listens for messages from the
@@ -27,8 +29,12 @@ export function App({ initialPrId = '' }: AppProps) {
   const [steps, setSteps] = useState<PipelineStep[]>([]);
   const [issues, setIssues] = useState<InlineIssue[]>([]);
   const [currentModel, setCurrentModel] = useState<CurrentModel>(DEFAULT_MODEL);
+  const [modelOptions, setModelOptions] = useState<ReadonlyArray<ModelEntry>>(DEFAULT_MODEL_OPTIONS);
   const [runningCommand, setRunningCommand] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  const [ready, setReady] = useState<boolean>(false);
+  const [aiConfigured, setAiConfigured] = useState<boolean>(false);
+  const [platformConfigured, setPlatformConfigured] = useState<boolean>(false);
   const [prId] = useState<string>(initialPrId);
 
   useEffect(() => {
@@ -41,8 +47,18 @@ export function App({ initialPrId = '' }: AppProps) {
       if (!result.success) return;
       handleExtensionMessage(result.data);
     };
+    const requestLatestState = (): void => {
+      sendMessage({ type: 'requestState' });
+    };
     window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
+    window.addEventListener('focus', requestLatestState);
+    document.addEventListener('visibilitychange', requestLatestState);
+    requestLatestState();
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('focus', requestLatestState);
+      document.removeEventListener('visibilitychange', requestLatestState);
+    };
   }, []);
 
   function handleExtensionMessage(message: ExtensionMessage): void {
@@ -56,6 +72,9 @@ export function App({ initialPrId = '' }: AppProps) {
       case 'configUpdate':
         setCurrentModel({ provider: message.provider, model: message.model });
         return;
+      case 'modelOptionsUpdate':
+        setModelOptions(message.models);
+        return;
       case 'commandRunning':
         setRunningCommand(message.command);
         setLastError(null);
@@ -66,6 +85,11 @@ export function App({ initialPrId = '' }: AppProps) {
       case 'commandFailed':
         setRunningCommand((current) => (current === message.command ? null : current));
         setLastError(`${message.command}: ${message.error}`);
+        return;
+      case 'setupStatus':
+        setReady(message.ready);
+        setAiConfigured(message.aiConfigured);
+        setPlatformConfigured(message.platformConfigured);
         return;
     }
   }
@@ -88,16 +112,42 @@ export function App({ initialPrId = '' }: AppProps) {
     setCurrentModel({ provider, model });
   }
 
-  function handleGenerateClaudeMd(): void {
-    sendMessage({ type: 'generateClaudeMd' });
+  function handleSetupKeys(): void {
+    sendMessage({ type: 'setupKeys' });
   }
 
-  function handleGenerateSpec(): void {
-    sendMessage({ type: 'generateSpec', filePath: '' });
+  function handleRunCommand(command: 'commit' | 'pr' | 'review' | 'status'): void {
+    sendMessage({ type: 'runCommand', command });
   }
 
   return (
     <div style={layout.app}>
+      {!ready ? (
+        <section style={layout.section} aria-label="Setup Keys">
+          <h2 style={layout.sectionTitle}>Setup Required</h2>
+          <div style={layout.card}>
+            <p style={{ margin: 0 }}>
+              Set at least one AI key and one platform key before using the panel.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, opacity: 0.8 }}>
+              <span>AI key: {aiConfigured ? 'configured' : 'missing'}</span>
+              <span>Platform key: {platformConfigured ? 'configured' : 'missing'}</span>
+            </div>
+            <div>
+              <button style={layout.primaryButton} onClick={handleSetupKeys} type="button">
+                Setup keys
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+      {ready ? (
+        <>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button style={layout.secondaryButton} onClick={handleSetupKeys} type="button">
+          Manage keys
+        </button>
+      </div>
       {runningCommand ? (
         <div style={{ opacity: 0.8, fontSize: 12 }} data-testid="running-banner">
           Running: {runningCommand}…
@@ -121,12 +171,28 @@ export function App({ initialPrId = '' }: AppProps) {
       <ModelSwitcher
         currentProvider={currentModel.provider}
         currentModel={currentModel.model}
+        models={modelOptions}
         onChange={handleSwitchModel}
       />
-      <SpecTools
-        onGenerateClaudeMd={handleGenerateClaudeMd}
-        onGenerateSpec={handleGenerateSpec}
-      />
+      <section style={layout.section} aria-label="Pipeline Actions">
+        <h2 style={layout.sectionTitle}>Pipeline Actions</h2>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button style={layout.primaryButton} type="button" onClick={() => handleRunCommand('commit')}>
+            Generate commit
+          </button>
+          <button style={layout.primaryButton} type="button" onClick={() => handleRunCommand('pr')}>
+            Create PR + description
+          </button>
+          <button style={layout.secondaryButton} type="button" onClick={() => handleRunCommand('review')}>
+            Review before push
+          </button>
+          <button style={layout.secondaryButton} type="button" onClick={() => handleRunCommand('status')}>
+            Show status
+          </button>
+        </div>
+      </section>
+        </>
+      ) : null}
     </div>
   );
 }

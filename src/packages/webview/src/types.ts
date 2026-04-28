@@ -18,8 +18,15 @@ export const inlineIssueSchema = z.object({
   suggestedFix: z.string().optional(),
 });
 
+export const modelEntrySchema = z.object({
+  label: z.string().min(1, 'ModelEntry.label must be non-empty.'),
+  provider: z.string().min(1, 'ModelEntry.provider must be non-empty.'),
+  model: z.string().min(1, 'ModelEntry.model must be non-empty.'),
+});
+
 export type PipelineStep = z.infer<typeof pipelineStepSchema>;
 export type InlineIssue = z.infer<typeof inlineIssueSchema>;
+export type ModelEntry = z.infer<typeof modelEntrySchema>;
 
 export const extensionMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pipelineUpdate'), steps: z.array(pipelineStepSchema) }),
@@ -28,6 +35,10 @@ export const extensionMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('configUpdate'),
     provider: z.string().min(1, 'configUpdate.provider must be non-empty.'),
     model: z.string().min(1, 'configUpdate.model must be non-empty.'),
+  }),
+  z.object({
+    type: z.literal('modelOptionsUpdate'),
+    models: z.array(modelEntrySchema),
   }),
   z.object({
     type: z.literal('commandRunning'),
@@ -41,6 +52,12 @@ export const extensionMessageSchema = z.discriminatedUnion('type', [
     type: z.literal('commandFailed'),
     command: z.string().min(1, 'commandFailed.command must be non-empty.'),
     error: z.string().min(1, 'commandFailed.error must be non-empty. Pass the error message from the host.'),
+  }),
+  z.object({
+    type: z.literal('setupStatus'),
+    aiConfigured: z.boolean(),
+    platformConfigured: z.boolean(),
+    ready: z.boolean(),
   }),
 ]);
 
@@ -65,15 +82,12 @@ export const webviewMessageSchema = z.discriminatedUnion('type', [
     provider: z.string().min(1, 'switchModel.provider must be non-empty. Use a value from the model list.'),
     model: z.string().min(1, 'switchModel.model must be non-empty. Use a value from the model list.'),
   }),
-  z.object({ type: z.literal('generateClaudeMd') }),
-  z.object({
-    type: z.literal('generateSpec'),
-    filePath: z.string().min(1, 'generateSpec.filePath must be non-empty. Pass the active editor file path.'),
-  }),
   z.object({
     type: z.literal('runCommand'),
     command: z.string().min(1, 'runCommand.command must be non-empty. Pass the gitflow CLI subcommand.'),
   }),
+  z.object({ type: z.literal('setupKeys') }),
+  z.object({ type: z.literal('requestState') }),
 ]);
 
 export type WebviewMessage = z.infer<typeof webviewMessageSchema>;

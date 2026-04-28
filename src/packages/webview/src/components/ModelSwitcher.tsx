@@ -5,6 +5,7 @@ import { ModelOption } from './ModelOption.js';
 interface ModelSwitcherProps {
   currentProvider: string;
   currentModel: string;
+  models: ReadonlyArray<ModelEntry>;
   onChange: (provider: string, model: string) => void;
 }
 
@@ -14,14 +15,6 @@ interface ModelEntry {
   model: string;
 }
 
-export const MODELS: ReadonlyArray<ModelEntry> = [
-  { label: 'Claude Sonnet 4.6', provider: 'claude', model: 'claude-sonnet-4-6' },
-  { label: 'Claude Opus 4.6', provider: 'claude', model: 'claude-opus-4-6' },
-  { label: 'GPT-4o', provider: 'openai', model: 'gpt-4o' },
-  { label: 'Gemini 1.5 Pro', provider: 'gemini', model: 'gemini-1.5-pro' },
-  { label: 'Ollama local', provider: 'ollama', model: 'llama3' },
-];
-
 /**
  * Section that lets the user switch the active AI model. Forwards the
  * selection to the parent which is responsible for sending switchModel.
@@ -29,14 +22,19 @@ export const MODELS: ReadonlyArray<ModelEntry> = [
 export function ModelSwitcher({
   currentProvider,
   currentModel,
+  models,
   onChange,
 }: ModelSwitcherProps) {
-  const value = `${currentProvider}:${currentModel}`;
+  const value = JSON.stringify({ provider: currentProvider, model: currentModel });
 
   const handleChange = (event: ChangeEvent<HTMLSelectElement>): void => {
-    const [provider, model] = event.target.value.split(':');
-    if (!provider || !model) return;
-    onChange(provider, model);
+    try {
+      const parsed = JSON.parse(event.target.value) as { provider?: unknown; model?: unknown };
+      if (typeof parsed.provider !== 'string' || typeof parsed.model !== 'string') return;
+      onChange(parsed.provider, parsed.model);
+    } catch {
+      return;
+    }
   };
 
   return (
@@ -48,8 +46,12 @@ export function ModelSwitcher({
         value={value}
         onChange={handleChange}
       >
-        {MODELS.map((m) => (
-          <ModelOption key={`${m.provider}:${m.model}`} provider={m.provider} model={m.model} label={m.label} />
+        {models.map((m) => (
+          <ModelOption
+            key={`${m.provider}:${m.model}`}
+            value={JSON.stringify({ provider: m.provider, model: m.model })}
+            label={m.label}
+          />
         ))}
       </select>
     </section>
