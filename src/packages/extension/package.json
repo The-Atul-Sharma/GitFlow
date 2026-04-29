@@ -9,6 +9,10 @@
     "type": "git",
     "url": "https://github.com/The-Atul-Sharma/gpilot.git"
   },
+  "homepage": "https://github.com/atsharma/gpilot",
+  "bugs": {
+    "url": "https://github.com/atsharma/gpilot/issues"
+  },
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=24.0.0"
