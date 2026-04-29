@@ -1,4 +1,4 @@
-# GitPilot
+# gpilot
 
 AI-powered git workflow inside VS Code. Generate commit messages, create
 pull requests with AI descriptions, run AI code reviews, and produce
@@ -6,7 +6,7 @@ module specifications — all from a task-oriented sidebar.
 
 The sidebar uses a **transparent background** and VS Code theme tokens,
 so it adapts cleanly to any active theme (dark, light, high-contrast).
-Most actions shell out to the [`gitpilot`](https://www.npmjs.com/package/gitpilot)
+Most actions shell out to the [`gpilot`](https://www.npmjs.com/package/gpilot)
 CLI; spec generation calls the configured AI provider directly using
 keys read from the OS keychain.
 
@@ -40,7 +40,7 @@ non-interactive in this state.
 
 ### Commit
 
-- **Generate Commit Message** — runs `gitpilot commit --dry-run` and
+- **Generate Commit Message** — runs `gpilot commit --dry-run` and
   drops the suggested Conventional Commit message into an editable
   textarea.
 - **Commit** — runs `git commit -m "<edited>"`. The extension never
@@ -74,7 +74,7 @@ When the current branch isn't pushed yet:
 After push:
 
 - **Generate PR title + description** — runs
-  `gitpilot pr create --dry-run` and fills two editable fields.
+  `gpilot pr create --dry-run` and fills two editable fields.
 - **Create PR** — opens the PR via `gh pr create`.
 
 ### PR Review
@@ -133,7 +133,7 @@ Pick the active provider + model from the header dropdown. Supports:
 - Any local Ollama model auto-discovered at
   `http://localhost:11434/api/tags`
 
-The selection is written into `gitpilot.config.yml`. The dropdown is
+The selection is written into `gpilot.config.yml`. The dropdown is
 width-capped and truncates long labels; the full label is shown on
 hover.
 
@@ -159,25 +159,25 @@ immediately whenever the panel becomes visible.
 
 ## Commands
 
-| Command                                      | What it does                                  |
-| -------------------------------------------- | --------------------------------------------- |
-| `gitpilot: Generate commit message`          | Runs `gitpilot commit` in a terminal          |
-| `gitpilot: Create PR with description`       | Runs `gitpilot pr` in a terminal              |
-| `gitpilot: Review current PR`                | Prompts for PR id then runs `gitpilot review` |
-| `gitpilot: Fix all blocker comments`         | Runs `gitpilot fix --all`                     |
-| `gitpilot: Fix selected comment`             | Runs `gitpilot fix --pr <id> --comment <id>`  |
-| `gitpilot: Switch AI model`                  | Quick-pick that updates `gitpilot.config.yml` |
-| `gitpilot: Setup or update API keys`         | Opens the keychain manager                    |
-| `gitpilot: Show panel`                       | Focuses the sidebar                           |
-| `gitpilot: Show status`                      | Runs `gitpilot status` in a terminal          |
-| `gitpilot: Toggle between AI and Native Git` | Flips the AI toggle from the palette          |
+| Command                                    | What it does                                |
+| ------------------------------------------ | ------------------------------------------- |
+| `gpilot: Generate commit message`          | Runs `gpilot commit` in a terminal          |
+| `gpilot: Create PR with description`       | Runs `gpilot pr` in a terminal              |
+| `gpilot: Review current PR`                | Prompts for PR id then runs `gpilot review` |
+| `gpilot: Fix all blocker comments`         | Runs `gpilot fix --all`                     |
+| `gpilot: Fix selected comment`             | Runs `gpilot fix --pr <id> --comment <id>`  |
+| `gpilot: Switch AI model`                  | Quick-pick that updates `gpilot.config.yml` |
+| `gpilot: Setup or update API keys`         | Opens the keychain manager                  |
+| `gpilot: Show panel`                       | Focuses the sidebar                         |
+| `gpilot: Show status`                      | Runs `gpilot status` in a terminal          |
+| `gpilot: Toggle between AI and Native Git` | Flips the AI toggle from the palette        |
 
 ## Settings
 
-| Setting                | Default        | Description                                     |
-| ---------------------- | -------------- | ----------------------------------------------- |
-| `gitpilot.defaultMode` | `gitpilot`     | `"gitpilot"` (AI on) or `"native"` (AI off)     |
-| `gitpilot.cliCommand`  | `npx gitpilot` | Override if `gitpilot` is installed differently |
+| Setting              | Default      | Description                                   |
+| -------------------- | ------------ | --------------------------------------------- |
+| `gpilot.defaultMode` | `gpilot`     | `"gpilot"` (AI on) or `"native"` (AI off)     |
+| `gpilot.cliCommand`  | `npx gpilot` | Override if `gpilot` is installed differently |
 
 ## Requirements
 
@@ -189,7 +189,7 @@ immediately whenever the panel becomes visible.
 
 ## Configuration file
 
-The extension expects a `gitpilot.config.yml` at the workspace root.
+The extension expects a `gpilot.config.yml` at the workspace root.
 Minimal example:
 
 ```yaml
@@ -221,7 +221,7 @@ review:
 The extension host **never** imports CLI modules directly. Each user
 action follows one of three paths:
 
-1. **One-shot stdout capture** — `npx gitpilot … --dry-run` /
+1. **One-shot stdout capture** — `npx gpilot … --dry-run` /
    `--json` for commit, PR draft, review, and status. The extension
    hydrates `process.env` from the keychain before invoking, so the
    CLI sees `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY`
@@ -236,8 +236,8 @@ action follows one of three paths:
 State storage:
 
 - **Mode** (AI on/off) and **first-launch** flag — `context.globalState`
-- **Secrets** — OS keychain via `keytar` (service: `gitpilot`)
-- **Model selection** — `gitpilot.config.yml`
+- **Secrets** — OS keychain via `keytar` (service: `gpilot`)
+- **Model selection** — `gpilot.config.yml`
 - **Open diff tabs** — tracked via
   `vscode.window.tabGroups.onDidChangeTabs` so the file-row highlight
   in the panel stays in sync with VS Code's editor state.

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Expose the gitpilot workflow inside VS Code via a sidebar webview, the
+Expose the gpilot workflow inside VS Code via a sidebar webview, the
 command palette, and source-control context menus. Users never need a
 terminal — commit, PR, review, fix, and spec generation all run from
 the panel.
@@ -11,7 +11,7 @@ the panel.
 
 1. **Extension host** — `packages/extension/src/extension.ts`. Pure
    TypeScript, talks to the VS Code API, shells out to the
-   [`gitpilot`](https://www.npmjs.com/package/gitpilot) CLI for
+   [`gpilot`](https://www.npmjs.com/package/gpilot) CLI for
    commit / PR / review / fix actions, and calls AI provider HTTP
    endpoints directly for spec generation. Holds `Set<string>` of
    open diff tabs and listens to `tabGroups.onDidChangeTabs` to keep
@@ -22,22 +22,22 @@ the panel.
 
 ## Commands registered (command palette via Cmd+Shift+P)
 
-| Command ID                | Label                                       |
-| ------------------------- | ------------------------------------------- |
-| `gitpilot.commit`         | gitpilot: Generate commit message           |
-| `gitpilot.createPR`       | gitpilot: Create PR with description        |
-| `gitpilot.reviewPR`       | gitpilot: Review current PR                 |
-| `gitpilot.fixAllBlockers` | gitpilot: Fix all blocker comments          |
-| `gitpilot.fixComment`     | gitpilot: Fix selected comment              |
-| `gitpilot.switchModel`    | gitpilot: Switch AI model                   |
-| `gitpilot.auth`           | gitpilot: Setup or update API keys          |
-| `gitpilot.showPanel`      | gitpilot: Show panel                        |
-| `gitpilot.status`         | gitpilot: Show status                       |
-| `gitpilot.toggleMode`     | gitpilot: Toggle between AI and Native Git  |
+| Command ID              | Label                                    |
+| ----------------------- | ---------------------------------------- |
+| `gpilot.commit`         | gpilot: Generate commit message          |
+| `gpilot.createPR`       | gpilot: Create PR with description       |
+| `gpilot.reviewPR`       | gpilot: Review current PR                |
+| `gpilot.fixAllBlockers` | gpilot: Fix all blocker comments         |
+| `gpilot.fixComment`     | gpilot: Fix selected comment             |
+| `gpilot.switchModel`    | gpilot: Switch AI model                  |
+| `gpilot.auth`           | gpilot: Setup or update API keys         |
+| `gpilot.showPanel`      | gpilot: Show panel                       |
+| `gpilot.status`         | gpilot: Show status                      |
+| `gpilot.toggleMode`     | gpilot: Toggle between AI and Native Git |
 
 ## Sidebar layout (delegated to the webview)
 
-The host registers a `WebviewViewProvider` (`gitpilot.panel`) that
+The host registers a `WebviewViewProvider` (`gpilot.panel`) that
 renders the React four-tab UI: **Commit / Pull Request / PR Review /
 Spec MD**, with a header (status dot, AI on/off toggle, model
 selector) and a footer (provider connection state, Manage Keys). See
@@ -48,14 +48,14 @@ calls behind it, and tab-state tracking — never UI styling.
 
 ## Mode handling
 
-`globalState[gitpilot.mode]` holds either `"gitpilot"` or `"native"`
-(default `"gitpilot"`). The header AI toggle is wired to this:
+`globalState[gpilot.mode]` holds either `"gpilot"` or `"native"`
+(default `"gpilot"`). The header AI toggle is wired to this:
 
-- `gitpilot` → AI mode on, all tabs interactive.
+- `gpilot` → AI mode on, all tabs interactive.
 - `native` → AI mode off, the webview locks every tab behind the
   AiOffBanner overlay.
 
-The `gitpilot.toggleMode` palette command flips the value and posts
+The `gpilot.toggleMode` palette command flips the value and posts
 `modeUpdate` so the sidebar reflects the change immediately. Mode is
 persisted across sessions.
 
@@ -84,10 +84,10 @@ can't keep the panel stuck on "Ollama running". For hosted providers,
 
 The host calls the CLI three ways depending on what the user is doing:
 
-1. **Captured stdout** (`execgitpilot(args)` →
-   `child_process.execFile`) — used by `gitpilot commit --dry-run`,
-   `gitpilot pr create --dry-run`, `gitpilot review --json`, and
-   `gitpilot status --json`. Output is parsed as JSON and forwarded
+1. **Captured stdout** (`execgpilot(args)` →
+   `child_process.execFile`) — used by `gpilot commit --dry-run`,
+   `gpilot pr create --dry-run`, `gpilot review --json`, and
+   `gpilot status --json`. Output is parsed as JSON and forwarded
    to the webview as a typed message. Before invoking, the host
    hydrates `process.env` from the OS keychain (`ANTHROPIC_API_KEY`,
    `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`,
@@ -100,7 +100,7 @@ The host calls the CLI three ways depending on what the user is doing:
    `/v1/chat/completions` for OpenAI, `:generateContent` for Gemini,
    `/api/generate` for Ollama). Falls back to a deterministic
    structural parse of the source file when no key is configured.
-3. **Terminal** (`vscode.window.createTerminal({ name: "gitpilot" })`)
+3. **Terminal** (`vscode.window.createTerminal({ name: "gpilot" })`)
    — used by palette commands, fix flows, `gh pr create`, and
    `git push -u origin HEAD` so the user can see streaming output and
    answer interactive prompts. The same terminal is reused.
@@ -148,16 +148,16 @@ so a freshly mounted webview is in sync.
    - Lists exactly the sections the webview asked for.
    - Tells the AI not to add TODO placeholders.
    - Inlines the source code in a fence.
-2. `callConfiguredAi(prompt)` reads `gitpilot.config.yml` for provider
+2. `callConfiguredAi(prompt)` reads `gpilot.config.yml` for provider
    and model, pulls the matching key from the keychain, and posts to
    the right HTTP endpoint:
 
-   | Provider  | Endpoint                                                  |
-   | --------- | --------------------------------------------------------- |
-   | claude    | `https://api.anthropic.com/v1/messages`                   |
-   | openai    | `https://api.openai.com/v1/chat/completions`              |
-   | gemini    | `https://generativelanguage.googleapis.com/v1beta/...`    |
-   | ollama    | `http://localhost:11434/api/generate`                     |
+   | Provider | Endpoint                                               |
+   | -------- | ------------------------------------------------------ |
+   | claude   | `https://api.anthropic.com/v1/messages`                |
+   | openai   | `https://api.openai.com/v1/chat/completions`           |
+   | gemini   | `https://generativelanguage.googleapis.com/v1beta/...` |
+   | ollama   | `http://localhost:11434/api/generate`                  |
 
    On HTTP error: throws `ExtensionError` with the upstream status +
    body so the panel banner shows the actual cause.
@@ -203,64 +203,64 @@ relative path (or `null` if cancelled), and the host posts
 
 ## Status bar item
 
-`gitpilotStatusBar` registers a single status bar entry on the left:
+`gpilotStatusBar` registers a single status bar entry on the left:
 
-- `$(check) gitpilot ready` when idle.
-- `$(sync~spin) gitpilot running...` while any host action is in
+- `$(check) gpilot ready` when idle.
+- `$(sync~spin) gpilot running...` while any host action is in
   flight.
-- Click invokes `gitpilot.showPanel` which focuses the sidebar.
+- Click invokes `gpilot.showPanel` which focuses the sidebar.
 
 Updated by every `runWithStatus(command, fn)` wrapper on the
 provider so the entry always reflects in-flight state.
 
 ## API key management
 
-Inside VS Code the user never runs `gitpilot auth`. The extension
+Inside VS Code the user never runs `gpilot auth`. The extension
 owns the secret-setup UX:
 
 - On first activation per VS Code profile, `runFirstLaunchSetupIfNeeded`
-  prompts to set up keys. A `gitpilot.firstLaunchComplete` flag in
+  prompts to set up keys. A `gpilot.firstLaunchComplete` flag in
   `context.globalState` ensures this runs once.
-- The setup screen in the panel and the `gitpilot.auth` command both
+- The setup screen in the panel and the `gpilot.auth` command both
   open `manageApiKeys()`, a quick-pick that walks every secret slot
   and prompts via `vscode.window.showInputBox({ password: true })`.
 - Keys are written to the OS keychain via `keytar` under the service
-  name `gitpilot` with the canonical account names: `ANTHROPIC_API_KEY`,
+  name `gpilot` with the canonical account names: `ANTHROPIC_API_KEY`,
   `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`,
   `AZURE_DEVOPS_PAT`, `GITLAB_TOKEN`.
-- `execgitpilot` hydrates `process.env` from these slots before
+- `execgpilot` hydrates `process.env` from these slots before
   spawning, so CLI subprocesses see them without any extra config.
 - The webview never receives, displays, or asks for a secret value.
 
 ## package.json contributes
 
-- `name`: `gitpilot`, `displayName`: `GitPilot`, `publisher`:
+- `name`: `gpilot`, `displayName`: `gpilot`, `publisher`:
   `atsharma`.
 - `categories`: `["SCM Providers", "AI", "Other"]`.
 - `activationEvents`: `["onStartupFinished"]`.
 - `contributes.commands`: every command listed above as
-  `gitpilot.*` with `category: "gitpilot"`.
-- `contributes.viewsContainers.activitybar`: a single `gitpilot`
+  `gpilot.*` with `category: "gpilot"`.
+- `contributes.viewsContainers.activitybar`: a single `gpilot`
   container using `media/activity-bar.png`.
-- `contributes.views.gitpilot`: one webview view `gitpilot.panel`
-  titled "gitpilot".
-- `contributes.menus.scm/title`: surfaces `gitpilot.commit` from the
+- `contributes.views.gpilot`: one webview view `gpilot.panel`
+  titled "gpilot".
+- `contributes.menus.scm/title`: surfaces `gpilot.commit` from the
   Source Control title bar when the active provider is git.
 - `contributes.configuration`:
-  - `gitpilot.defaultMode`: `"gitpilot" | "native"` (default
-    `gitpilot`).
-  - `gitpilot.cliCommand`: command used to invoke the CLI (default
-    `npx gitpilot`).
+  - `gpilot.defaultMode`: `"gpilot" | "native"` (default
+    `gpilot`).
+  - `gpilot.cliCommand`: command used to invoke the CLI (default
+    `npx gpilot`).
 
 ## State storage
 
-| State                              | Where                                              |
-| ---------------------------------- | -------------------------------------------------- |
-| AI on/off mode                     | `context.globalState[gitpilot.mode]`               |
-| First-launch flag                  | `context.globalState[gitpilot.firstLaunchComplete]`|
-| API keys                           | OS keychain via `keytar` (service: `gitpilot`)     |
-| Active provider + model            | `gitpilot.config.yml` (`ai.provider`, `ai.model`)  |
-| Open diff tabs                     | `gitpilotSidebarProvider.openedDiffs: Set<string>` (re-derivable from `tabGroups`) |
+| State                   | Where                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| AI on/off mode          | `context.globalState[gpilot.mode]`                                               |
+| First-launch flag       | `context.globalState[gpilot.firstLaunchComplete]`                                |
+| API keys                | OS keychain via `keytar` (service: `gpilot`)                                     |
+| Active provider + model | `gpilot.config.yml` (`ai.provider`, `ai.model`)                                  |
+| Open diff tabs          | `gpilotSidebarProvider.openedDiffs: Set<string>` (re-derivable from `tabGroups`) |
 
 ## Rules
 
@@ -281,7 +281,7 @@ owns the secret-setup UX:
 - Tab-close reconciliation runs on `tabGroups.onDidChangeTabs`; the
   panel highlight is a mirror of editor truth, never a guess.
 - API keys are configured inside VS Code (first-launch prompt or
-  `gitpilot.auth`), never by asking the user to run `gitpilot auth` in
+  `gpilot.auth`), never by asking the user to run `gpilot auth` in
   a terminal.
 - Webview polls `requestState` every 2.5s without gating on
   `document.visibilityState`.
@@ -289,12 +289,12 @@ owns the secret-setup UX:
 ## Tests required
 
 - Palette commands spawn a terminal with the correct CLI invocation.
-- `gitpilot.toggleMode` flips `globalState[gitpilot.mode]` and posts
+- `gpilot.toggleMode` flips `globalState[gpilot.mode]` and posts
   `modeUpdate` to the webview.
 - `switchModel` quick pick shows every entry in `MODEL_OPTIONS` plus
   any model returned by `http://localhost:11434/api/tags`, deduped on
   `provider:model`.
-- `switchModel` writes both fields into `gitpilot.config.yml` and
+- `switchModel` writes both fields into `gpilot.config.yml` and
   posts `configUpdate` immediately afterwards.
 - `reviewPR` passes `--pr <id>` when a PR number is entered, and runs
   without the flag when the input box is cancelled.
@@ -303,18 +303,18 @@ owns the secret-setup UX:
   `openDiffsUpdate` in a single tick.
 - `setupStatus` for an Ollama provider with the daemon down resolves
   `aiConfigured: false` within ~1s.
-- Webview `generateCommit` causes the host to run `gitpilot commit
-  --dry-run` with `process.env` hydrated from the keychain, then post
+- Webview `generateCommit` causes the host to run `gpilot commit
+--dry-run` with `process.env` hydrated from the keychain, then post
   `commitDraft` with the parsed message.
 - Webview `commitMessage` triggers a `git commit -m "<msg>"` and only
   on success does the host post `commandDone` and a refreshed
   `repoStatus`.
-- Webview `generatePr` runs `gitpilot pr create --dry-run` and posts
+- Webview `generatePr` runs `gpilot pr create --dry-run` and posts
   `prDraft` with the parsed `{title, description}`.
 - Webview `pushBranch` runs `git push -u origin HEAD` in the terminal.
-- Webview `runReview` runs `gitpilot review --json` and posts
+- Webview `runReview` runs `gpilot review --json` and posts
   `reviewResult` with parsed issues; an empty array emits no UI card.
-- Webview `publishReview` runs `gitpilot review --publish` in the
+- Webview `publishReview` runs `gpilot review --publish` in the
   terminal.
 - Webview `openPr` runs `gh pr view --web` in the terminal.
 - Webview `openFileDiff { path, staged: true }` calls `vscode.diff`

@@ -1,10 +1,10 @@
-# 🚀 GitPilot
+# 🚀 gpilot
 
-[![npm version](https://img.shields.io/npm/v/gitpilot.svg)](https://www.npmjs.com/package/gitpilot)
-[![npm downloads](https://img.shields.io/npm/dw/gitpilot.svg)](https://www.npmjs.com/package/gitpilot)
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/your-publisher.gitpilot)](https://marketplace.visualstudio.com/items?itemName=your-publisher.gitpilot)
-[![VS Code Installs](https://img.shields.io/visual-studio-marketplace/i/your-publisher.gitpilot)](https://marketplace.visualstudio.com/items?itemName=your-publisher.gitpilot)
-[![License](https://img.shields.io/npm/l/gitpilot)](./LICENSE)
+[![npm version](https://img.shields.io/npm/v/gpilot.svg)](https://www.npmjs.com/package/gpilot)
+[![npm downloads](https://img.shields.io/npm/dw/gpilot.svg)](https://www.npmjs.com/package/gpilot)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/your-publisher.gpilot)](https://marketplace.visualstudio.com/items?itemName=your-publisher.gpilot)
+[![VS Code Installs](https://img.shields.io/visual-studio-marketplace/i/your-publisher.gpilot)](https://marketplace.visualstudio.com/items?itemName=your-publisher.gpilot)
+[![License](https://img.shields.io/npm/l/gpilot)](./LICENSE)
 
 AI-powered **Git workflow automation CLI and VS Code extension**.
 
@@ -21,7 +21,7 @@ AI-powered **Git workflow automation CLI and VS Code extension**.
 - 🔍 Review PRs against configurable rules
 - 🛠️ Apply review fixes interactively
 - 🧪 Dry-run support for safe previews
-- 📊 Repository state detection via `gitpilot status`
+- 📊 Repository state detection via `gpilot status`
 - 🤖 Pluggable AI providers:
   - OpenAI (GPT)
   - Anthropic (Claude)
@@ -47,7 +47,7 @@ background that adapts to any VS Code theme (dark, light, high-contrast).
   When AI is off, every tab and CTA is locked behind an overlay.
 - **Model selector** — switch between Claude, GPT-4o, Gemini, or any
   locally installed Ollama model. Selection is written to
-  `gitpilot.config.yml`.
+  `gpilot.config.yml`.
 
 #### 🛠️ Setup Screen
 
@@ -111,22 +111,22 @@ needed.
 
 #### 🧭 Commands
 
-- `gitpilot: Generate commit message`
-- `gitpilot: Create PR with description`
-- `gitpilot: Review current PR`
-- `gitpilot: Fix all blocker comments`
-- `gitpilot: Fix selected comment`
-- `gitpilot: Switch AI model`
-- `gitpilot: Setup or update API keys`
-- `gitpilot: Show panel`
-- `gitpilot: Show status`
-- `gitpilot: Toggle between AI and Native Git`
+- `gpilot: Generate commit message`
+- `gpilot: Create PR with description`
+- `gpilot: Review current PR`
+- `gpilot: Fix all blocker comments`
+- `gpilot: Fix selected comment`
+- `gpilot: Switch AI model`
+- `gpilot: Setup or update API keys`
+- `gpilot: Show panel`
+- `gpilot: Show status`
+- `gpilot: Toggle between AI and Native Git`
 
 #### ⚙️ Settings (`settings.json`)
 
-- `gitpilot.defaultMode` — `"gitpilot"` or `"native"`
-- `gitpilot.cliCommand` — override the CLI invocation (default
-  `npx gitpilot`)
+- `gpilot.defaultMode` — `"gpilot"` or `"native"`
+- `gpilot.cliCommand` — override the CLI invocation (default
+  `npx gpilot`)
 
 ---
 
@@ -135,7 +135,7 @@ needed.
 The VS Code extension runs commit / PR / review actions via:
 
 ```bash
-gitpilot ...
+gpilot ...
 ```
 
 This ensures:
@@ -163,13 +163,13 @@ OpenAI / Gemini / Ollama) using keys read from the OS keychain.
 ### 🖥️ CLI
 
 ```bash
-npm install -g gitpilot
+npm install -g gpilot
 ```
 
 Verify:
 
 ```bash
-gitpilot --help
+gpilot --help
 ```
 
 ### 🧩 VS Code Extension
@@ -177,7 +177,7 @@ gitpilot --help
 Install from **VS Code Marketplace**:
 
 1. Open Extensions (`Cmd/Ctrl + Shift + X`)
-2. Search for **gitpilot**
+2. Search for **gpilot**
 3. Click **Install**
 
 ---
@@ -205,12 +205,12 @@ API keys are stored in your **OS keychain** (macOS Keychain, Windows
 Credential Manager, libsecret on Linux) via `keytar`:
 
 - Used during extension onboarding
-- Managed via: `gitpilot: Setup or update API keys` or the **Manage
+- Managed via: `gpilot: Setup or update API keys` or the **Manage
   Keys** button in the panel footer
 
 ---
 
-### 🧾 gitpilot.config.yml
+### 🧾 gpilot.config.yml
 
 Controls:
 
@@ -226,23 +226,23 @@ Controls:
 ### CLI
 
 ```bash
-gitpilot commit --dry-run
-gitpilot commit
+gpilot commit --dry-run
+gpilot commit
 
-gitpilot pr create --dry-run
-gitpilot pr create
+gpilot pr create --dry-run
+gpilot pr create
 
-gitpilot pr review
-gitpilot fix
+gpilot pr review
+gpilot fix
 
-gitpilot status
+gpilot status
 ```
 
 ---
 
 ### VS Code Extension
 
-1. Click the **gitpilot** icon in the activity bar
+1. Click the **gpilot** icon in the activity bar
 2. If credentials are missing, click **Configure** to save them to your
    system keychain
 3. Use the four tabs:
@@ -278,14 +278,14 @@ To package and install the VS Code extension locally:
 ```bash
 cd src/packages/extension
 npm run build                    # builds webview + extension
-npx @vscode/vsce package         # produces gitpilot-<version>.vsix
-code --install-extension gitpilot-{version}.vsix
+npx @vscode/vsce package         # produces gpilot-<version>.vsix
+code --install-extension gpilot-{version}.vsix
 ```
 
 After installation:
 
 - Reload VS Code
-- Click the **gitpilot** icon in the activity bar to open the panel
+- Click the **gpilot** icon in the activity bar to open the panel
 
 ---
 

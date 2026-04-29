@@ -111,7 +111,7 @@ async function openEditor(initialContent: string): Promise<string> {
   const editor = process.env["EDITOR"] ?? "vim";
   const tmpPath = join(
     tmpdir(),
-    `gitpilot-${randomBytes(8).toString("hex")}.txt`,
+    `gpilot-${randomBytes(8).toString("hex")}.txt`,
   );
   await fs.writeFile(tmpPath, initialContent, "utf8");
   try {

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Abstract AI provider interface so gitpilot can swap between
+Abstract AI provider interface so gpilot can swap between
 Claude, OpenAI, Gemini, and Ollama via config.
 
 ## Public API
@@ -38,7 +38,7 @@ export function withFallback(
 
 ## Config
 
-AIConfig comes from gitpilot.config.yml:
+AIConfig comes from gpilot.config.yml:
 
 - provider: 'claude' | 'openai' | 'gemini' | 'ollama'
 - model: string
@@ -55,7 +55,7 @@ AIConfig comes from gitpilot.config.yml:
 ## Error cases
 
 - Missing API key → AIProviderError "ANTHROPIC_API_KEY not found.
-  Run: npx gitpilot auth"
+  Run: npx gpilot auth"
 - Network failure → wrap original error with provider name
 - Invalid model name → throw with list of valid models for provider
 

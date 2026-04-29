@@ -65,7 +65,7 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-const CONFIG_FILENAME = "gitpilot.config.yml";
+const CONFIG_FILENAME = "gpilot.config.yml";
 const HOOK_PREPARE_COMMIT = "prepare-commit-msg";
 const HOOK_POST_PUSH = "post-push";
 
@@ -73,7 +73,7 @@ const EXIT_SUCCESS = 0;
 const EXIT_ERROR = 1;
 const EXIT_CANCELLED = 2;
 
-/** Confirmation modes accepted in gitpilot.config.yml. */
+/** Confirmation modes accepted in gpilot.config.yml. */
 const confirmModeValues = ["interactive", "auto", "dryrun"] as const;
 
 const providerNameSchema = z.enum(["claude", "openai", "gemini", "ollama"]);
@@ -88,7 +88,7 @@ const aiSectionSchema = z
       .string()
       .min(
         1,
-        'ai.model is empty. Set "ai.model" in gitpilot.config.yml to a non-empty model id.',
+        'ai.model is empty. Set "ai.model" in gpilot.config.yml to a non-empty model id.',
       ),
     fallback: providerNameSchema.optional(),
   })
@@ -132,7 +132,7 @@ const configSchema = z.object({
   review: reviewSectionSchema,
 });
 
-export interface gitpilotConfig {
+export interface gpilotConfig {
   ai: {
     provider: ProviderName;
     model: string;
@@ -178,10 +178,10 @@ const DEFAULT_PROVIDER_MODEL: Record<ProviderName, string> = {
   ollama: "llama3",
 };
 
-const HELP_TEXT = `gitpilot — automate your git workflow with AI
+const HELP_TEXT = `gpilot — automate your git workflow with AI
 
 Usage:
-  npx gitpilot <command> [options]
+  npx gpilot <command> [options]
 
 Commands:
   auth                       Store AI and platform credentials in the OS keychain
@@ -195,24 +195,24 @@ Commands:
   status [--json]            Show the current configuration / repo status summary
 
 Flags:
-  --version                  Print the gitpilot version
+  --version                  Print the gpilot version
   --help                     Print this help text
   --hook                     Internal: forces mode=auto (used by installed hooks)
   --dry-run                  Generate output but do not commit, push, or create PR
   --json                     Emit machine-readable JSON (status, review)
 
 Environment:
-  DEBUG=gitpilot              Print full stack traces on error
+  DEBUG=gpilot              Print full stack traces on error
 `;
 
 /**
- * Read and validate `gitpilot.config.yml` from the given directory.
+ * Read and validate `gpilot.config.yml` from the given directory.
  *
  * @param cwd - directory to look in; defaults to `process.cwd()`
  * @returns the parsed and validated config object
  * @throws ConfigError when the file is missing, unparseable, or fails schema validation
  */
-export function loadConfig(cwd?: string): gitpilotConfig {
+export function loadConfig(cwd?: string): gpilotConfig {
   const dir = cwd ?? process.cwd();
   const path = join(dir, CONFIG_FILENAME);
 
@@ -223,7 +223,7 @@ export function loadConfig(cwd?: string): gitpilotConfig {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "ENOENT") {
       throw new ConfigError(
-        `No ${CONFIG_FILENAME} found at ${dir}. Run: npx gitpilot init`,
+        `No ${CONFIG_FILENAME} found at ${dir}. Run: npx gpilot init`,
       );
     }
     const reason = err instanceof Error ? err.message : String(err);
@@ -252,7 +252,7 @@ export function loadConfig(cwd?: string): gitpilotConfig {
     );
   }
 
-  return result.data as gitpilotConfig;
+  return result.data as gpilotConfig;
 }
 
 interface ExtendedGitClient
@@ -299,7 +299,7 @@ function createExtendedGitClient(cwd: string): ExtendedGitClient {
 }
 
 async function ensureAiSecret(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   secrets: Secrets,
 ): Promise<void> {
   const requiredProviders: ProviderName[] = [config.ai.provider];
@@ -318,7 +318,7 @@ async function ensureAiSecret(
   }
 }
 
-function createConfiguredAI(config: gitpilotConfig): AIProvider {
+function createConfiguredAI(config: gpilotConfig): AIProvider {
   const primary = createAIProvider({
     provider: config.ai.provider,
     model: config.ai.model,
@@ -339,7 +339,7 @@ function createConfiguredAI(config: gitpilotConfig): AIProvider {
 }
 
 async function resolveGitHubConfig(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   git: GitClient,
   secrets: Secrets,
 ): Promise<GitHubConfig> {
@@ -359,7 +359,7 @@ async function resolveGitHubConfig(
 }
 
 async function resolveAzureDevOpsConfig(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   secrets: Secrets,
 ): Promise<AzureDevOpsConfig> {
   const org = config.platform.org;
@@ -367,7 +367,7 @@ async function resolveAzureDevOpsConfig(
   const repositoryId = config.platform.repositoryId;
   if (!org || !project || !repositoryId) {
     throw new ConfigError(
-      "platform.org, platform.project, and platform.repositoryId are required for azure-devops. Set them in gitpilot.config.yml.",
+      "platform.org, platform.project, and platform.repositoryId are required for azure-devops. Set them in gpilot.config.yml.",
     );
   }
   const pat = await secrets.get("AZURE_DEVOPS_PAT");
@@ -378,7 +378,7 @@ async function resolveAzureDevOpsConfig(
 }
 
 async function resolvePlatform(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   git: GitClient,
   secrets: Secrets,
 ): Promise<GitPlatform> {
@@ -453,11 +453,11 @@ async function runInstall(cwd: string): Promise<void> {
   const hooks: { name: string; body: string }[] = [
     {
       name: HOOK_PREPARE_COMMIT,
-      body: "#!/bin/sh\nnpx gitpilot commit --hook\n",
+      body: "#!/bin/sh\nnpx gpilot commit --hook\n",
     },
     {
       name: HOOK_POST_PUSH,
-      body: "#!/bin/sh\nnpx gitpilot pr --hook\n",
+      body: "#!/bin/sh\nnpx gpilot pr --hook\n",
     },
   ];
 
@@ -485,7 +485,7 @@ function createSilentConfirmation(): Confirmation {
 }
 
 async function runCommit(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   hookFlag: boolean,
   cwd: string,
   dryRun: boolean,
@@ -525,7 +525,7 @@ async function runCommit(
 }
 
 async function runPr(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   hookFlag: boolean,
   cwd: string,
   dryRun: boolean,
@@ -576,7 +576,7 @@ async function runPr(
 }
 
 async function runReview(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   prId: string | undefined,
   hookFlag: boolean,
   cwd: string,
@@ -616,7 +616,7 @@ async function runReview(
 }
 
 async function runFix(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   prId: string,
   commentId: string | undefined,
   hookFlag: boolean,
@@ -663,7 +663,7 @@ async function detectBranchPushed(
 }
 
 async function detectHasOpenPR(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   git: GitClient,
   secrets: Secrets,
   branch: string,
@@ -702,9 +702,7 @@ async function detectHasCommit(cwd: string): Promise<boolean> {
   }
 }
 
-async function listWorkingTreeFiles(
-  cwd: string,
-): Promise<
+async function listWorkingTreeFiles(cwd: string): Promise<
   Array<{
     status: string;
     path: string;
@@ -738,7 +736,7 @@ async function listWorkingTreeFiles(
 }
 
 async function runStatus(
-  config: gitpilotConfig,
+  config: gpilotConfig,
   cwd: string,
   jsonOutput: boolean,
 ): Promise<void> {
@@ -802,7 +800,7 @@ async function runStatus(
   }
 
   const lines = [
-    `${chalk.bold("gitpilot status")}`,
+    `${chalk.bold("gpilot status")}`,
     `  AI:        ${config.ai.provider} (${config.ai.model})${config.ai.fallback ? ` → fallback ${config.ai.fallback}` : ""}`,
     `  Platform:  ${platformLabel}`,
     `  Branch:    ${currentBranch || "(detached)"} ${isBranchPushed ? chalk.green("(pushed)") : chalk.yellow("(local only)")}`,
@@ -833,7 +831,7 @@ function readPackageVersion(): string {
 }
 
 function reportError(err: unknown): void {
-  const debug = process.env["DEBUG"] === "gitpilot";
+  const debug = process.env["DEBUG"] === "gpilot";
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`${chalk.red("error")}: ${message}\n`);
   if (debug && err instanceof Error && err.stack) {
@@ -844,12 +842,12 @@ function reportError(err: unknown): void {
 const argvSchema = z.array(z.string());
 
 /**
- * gitpilot CLI entry point.
+ * gpilot CLI entry point.
  *
  * Parses `argv` (without the leading `node` and script path), routes to the
  * matching command, and translates module results into process exit codes:
  * 0 on success, 1 on error, 2 on user cancellation. All errors are caught
- * here; only `DEBUG=gitpilot` causes stack traces to be printed.
+ * here; only `DEBUG=gpilot` causes stack traces to be printed.
  *
  * @param argv - raw arguments, e.g. `process.argv.slice(2)`
  */
@@ -910,7 +908,7 @@ export async function main(argv: string[]): Promise<void> {
         const prId = typeof args["pr"] === "string" ? args["pr"] : "";
         if (!prId) {
           throw new Error(
-            "--pr <id> is required for fix. Pass the PR id, e.g. npx gitpilot fix --pr 142.",
+            "--pr <id> is required for fix. Pass the PR id, e.g. npx gpilot fix --pr 142.",
           );
         }
         const commentId =

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Entry point for gitpilot. Reads gitpilot.config.yml, wires all
+Entry point for gpilot. Reads gpilot.config.yml, wires all
 modules together, registers git hooks, and exposes commands that
 developers run from the terminal.
 
@@ -22,7 +22,7 @@ developers run from the terminal.
 
 ## Commands exposed
 
-### npx gitpilot auth
+### npx gpilot auth
 
 Interactive setup wizard. Prompts for each secret key and
 stores them in OS keychain via secrets module.
@@ -33,7 +33,7 @@ Prompts:
 ? Azure DevOps PAT: \*\*\*\*
 ✓ Secrets stored in OS keychain
 
-### npx gitpilot install
+### npx gpilot install
 
 Install git hooks into current repo:
 
@@ -42,29 +42,29 @@ Install git hooks into current repo:
   Writes hooks to .git/hooks/ with chmod +x
   Shows success message listing installed hooks.
 
-### npx gitpilot commit
+### npx gpilot commit
 
-Run commitGenerator.run() with config from gitpilot.config.yml
+Run commitGenerator.run() with config from gpilot.config.yml
 Uses mode from config.mode.commit
 
-### npx gitpilot pr
+### npx gpilot pr
 
 Run prCreator.run() which internally runs prDescription
 Uses mode from config.mode.pr_create
 
-### npx gitpilot review [--pr <id>]
+### npx gpilot review [--pr <id>]
 
 Run prReviewer.run() with optional PR id
 If --pr not provided, reviews local diff
 Uses mode from config.mode.pr_review
 
-### npx gitpilot fix [--pr <id>] [--comment <id>]
+### npx gpilot fix [--pr <id>] [--comment <id>]
 
 Run commentFixer.run()
 If --comment not provided, fix all blockers on PR
 Uses mode from config.mode.comment_fix
 
-### npx gitpilot status
+### npx gpilot status
 
 Show current config summary:
 
@@ -83,7 +83,7 @@ export async function main(argv: string[]): Promise<void>;
 ## Config loading
 
 ```ts
-export interface gitpilotConfig {
+export interface gpilotConfig {
   ai: {
     provider: "claude" | "openai" | "gemini" | "ollama";
     model: string;
@@ -109,7 +109,7 @@ export interface gitpilotConfig {
   };
 }
 
-export function loadConfig(cwd?: string): gitpilotConfig;
+export function loadConfig(cwd?: string): gpilotConfig;
 ```
 
 ## Wiring — how modules connect
@@ -163,13 +163,13 @@ const reviewer = createPrReviewer({
 ## Rules
 
 - Parse argv with minimist (lightweight arg parser)
-- Load gitpilot.config.yml from current working directory
-- If no gitpilot.config.yml found, throw with helpful message:
-  "No gitpilot.config.yml found. Run: npx gitpilot init"
+- Load gpilot.config.yml from current working directory
+- If no gpilot.config.yml found, throw with helpful message:
+  "No gpilot.config.yml found. Run: npx gpilot init"
 - Show version with --version flag (read from package.json)
 - Show help with --help or unknown command
 - All errors caught at top level — print error message and exit 1
-- Never show stack traces to end users — only in DEBUG=gitpilot mode
+- Never show stack traces to end users — only in DEBUG=gpilot mode
 - Exit 0 on success, 1 on error, 2 on user cancellation
 
 ## Git hook content
@@ -178,30 +178,30 @@ const reviewer = createPrReviewer({
 
 ```bash
 #!/bin/sh
-npx gitpilot commit --hook
+npx gpilot commit --hook
 ```
 
 ### post-push hook
 
 ```bash
 #!/bin/sh
-npx gitpilot pr --hook
+npx gpilot pr --hook
 ```
 
 The --hook flag sets mode to auto so hooks never prompt.
 
 ## Error cases
 
-- No gitpilot.config.yml → ConfigError with init instruction
+- No gpilot.config.yml → ConfigError with init instruction
 - Invalid config values → ConfigError listing invalid fields with zod
 - Secret not found for chosen provider → SecretNotFoundError
-  pointing to npx gitpilot auth
+  pointing to npx gpilot auth
 - Unknown command → print help and exit 2
 - Module throws → catch, print error.message, exit 1
 
 ## Tests required
 
-- loadConfig reads gitpilot.config.yml correctly
+- loadConfig reads gpilot.config.yml correctly
 - loadConfig throws ConfigError when file not found
 - loadConfig throws ConfigError on invalid provider value
 - commit command runs commitGenerator.run()

@@ -43,7 +43,7 @@ export interface PrReviewerInput {
   platform: GitPlatform;
   confirmation: Confirmation;
   mode: ConfirmMode;
-  rules: ReviewRule[]; // configured review rules from gitpilot.config.yml
+  rules: ReviewRule[]; // configured review rules from gpilot.config.yml
   prId?: string; // if provided, fetch diff from platform; otherwise local
 }
 

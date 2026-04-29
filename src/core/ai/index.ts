@@ -40,7 +40,7 @@ const aiConfigSchema = z.object({
     .string()
     .min(
       1,
-      'model is required. Set "model" in gitpilot.config.yml to a non-empty string.',
+      'model is required. Set "model" in gpilot.config.yml to a non-empty string.',
     ),
   fallback: providerNameSchema.optional(),
 });
@@ -109,7 +109,7 @@ function requireApiKey(provider: Exclude<ProviderName, "ollama">): string {
   const value = process.env[envName];
   if (!value) {
     throw new AIProviderError(
-      `${envName} not found. Run: npx gitpilot auth`,
+      `${envName} not found. Run: npx gpilot auth`,
       provider,
     );
   }
@@ -148,14 +148,14 @@ function wrapProviderError(
   if (looksLikeModelError(err)) {
     const valid = KNOWN_MODELS[provider].join(", ");
     throw new AIProviderError(
-      `Invalid model "${model}" for ${provider}. Set "model" in gitpilot.config.yml to one of: ${valid}.`,
+      `Invalid model "${model}" for ${provider}. Set "model" in gpilot.config.yml to one of: ${valid}.`,
       provider,
     );
   }
   if (looksLikeQuotaOrRateLimitError(err)) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new AIProviderError(
-      `${provider} quota/rate-limit reached for model "${model}": ${reason}. Retry later, switch to another model/provider, or configure ai.fallback in gitpilot.config.yml.`,
+      `${provider} quota/rate-limit reached for model "${model}": ${reason}. Retry later, switch to another model/provider, or configure ai.fallback in gpilot.config.yml.`,
       provider,
     );
   }
@@ -370,7 +370,7 @@ class OllamaProvider implements AIProvider {
  * Reads the matching API key from process.env (populated by the secrets module).
  * For ollama, no API key is required.
  *
- * @param config - provider name, model, and optional fallback from gitpilot.config.yml
+ * @param config - provider name, model, and optional fallback from gpilot.config.yml
  * @returns an AIProvider implementation matching config.provider
  * @throws AIProviderError when the chosen provider's API key is missing
  */

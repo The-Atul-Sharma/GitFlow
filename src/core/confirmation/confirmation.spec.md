@@ -3,7 +3,7 @@
 ## Purpose
 
 Provide interactive y/n/edit/regenerate prompts for the CLI so every
-gitpilot action has consistent UX. Also supports auto and dryrun modes
+gpilot action has consistent UX. Also supports auto and dryrun modes
 where prompts are skipped.
 
 ## Public API
@@ -52,7 +52,7 @@ export function createConfirmation(): Confirmation;
 
 - Print preview to stdout
 - Return { action: 'no' } so the action does not execute
-- Useful for previewing what gitpilot would do
+- Useful for previewing what gpilot would do
 
 ## UI requirements
 

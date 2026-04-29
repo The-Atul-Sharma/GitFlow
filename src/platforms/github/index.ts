@@ -54,7 +54,7 @@ const configSchema = z.object({
     .string()
     .min(
       1,
-      "GitHub token is empty. Run: npx gitpilot auth and store GITHUB_TOKEN.",
+      "GitHub token is empty. Run: npx gpilot auth and store GITHUB_TOKEN.",
     ),
 });
 
@@ -170,7 +170,7 @@ function mapGitHubError(
 
   if (status === 401) {
     return new GitHubError(
-      "GitHub token invalid or expired. Run: npx gitpilot auth",
+      "GitHub token invalid or expired. Run: npx gpilot auth",
       401,
     );
   }

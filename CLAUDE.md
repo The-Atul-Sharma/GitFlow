@@ -1,4 +1,4 @@
-# gitpilot
+# gpilot
 
 CLI tool that automates git workflow — commit messages, PR creation,
 PR descriptions, and PR reviews — using configurable AI providers.
@@ -15,7 +15,7 @@ PR descriptions, and PR reviews — using configurable AI providers.
 
 The repository must follow this structure:
 
-gitpilot/
+gpilot/
 .gitignore
 .env.example
 CLAUDE.md

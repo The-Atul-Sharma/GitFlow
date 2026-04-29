@@ -1,6 +1,6 @@
 {
-  "name": "gitpilot",
-  "displayName": "GitPilot",
+  "name": "gpilot",
+  "displayName": "gpilot",
   "description": "AI-powered git workflow inside VS Code: generate commits, create PRs with descriptions, and run AI code reviews — all from a task-oriented sidebar.",
   "version": "0.1.0",
   "publisher": "atsharma",
@@ -40,78 +40,78 @@
   "contributes": {
     "commands": [
       {
-        "command": "gitpilot.commit",
-        "title": "gitpilot: Generate commit message",
-        "category": "gitpilot"
+        "command": "gpilot.commit",
+        "title": "gpilot: Generate commit message",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.createPR",
-        "title": "gitpilot: Create PR with description",
-        "category": "gitpilot"
+        "command": "gpilot.createPR",
+        "title": "gpilot: Create PR with description",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.reviewPR",
-        "title": "gitpilot: Review current PR",
-        "category": "gitpilot"
+        "command": "gpilot.reviewPR",
+        "title": "gpilot: Review current PR",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.fixAllBlockers",
-        "title": "gitpilot: Fix all blocker comments",
-        "category": "gitpilot"
+        "command": "gpilot.fixAllBlockers",
+        "title": "gpilot: Fix all blocker comments",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.fixComment",
-        "title": "gitpilot: Fix selected comment",
-        "category": "gitpilot"
+        "command": "gpilot.fixComment",
+        "title": "gpilot: Fix selected comment",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.switchModel",
-        "title": "gitpilot: Switch AI model",
-        "category": "gitpilot"
+        "command": "gpilot.switchModel",
+        "title": "gpilot: Switch AI model",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.auth",
-        "title": "gitpilot: Setup or update API keys",
-        "category": "gitpilot"
+        "command": "gpilot.auth",
+        "title": "gpilot: Setup or update API keys",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.showPanel",
-        "title": "gitpilot: Show panel",
-        "category": "gitpilot"
+        "command": "gpilot.showPanel",
+        "title": "gpilot: Show panel",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.status",
-        "title": "gitpilot: Show status",
-        "category": "gitpilot"
+        "command": "gpilot.status",
+        "title": "gpilot: Show status",
+        "category": "gpilot"
       },
       {
-        "command": "gitpilot.toggleMode",
-        "title": "gitpilot: Toggle between AI and Native Git",
-        "category": "gitpilot"
+        "command": "gpilot.toggleMode",
+        "title": "gpilot: Toggle between AI and Native Git",
+        "category": "gpilot"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "gitpilot",
-          "title": "gitpilot",
+          "id": "gpilot",
+          "title": "gpilot",
           "icon": "media/activity-bar.png"
         }
       ]
     },
     "views": {
-      "gitpilot": [
+      "gpilot": [
         {
           "type": "webview",
-          "id": "gitpilot.panel",
-          "name": "gitpilot"
+          "id": "gpilot.panel",
+          "name": "gpilot"
         }
       ]
     },
     "menus": {
       "scm/title": [
         {
-          "command": "gitpilot.commit",
+          "command": "gpilot.commit",
           "group": "navigation",
           "when": "scmProvider == git"
         }
@@ -119,21 +119,21 @@
       "view/title": []
     },
     "configuration": {
-      "title": "gitpilot",
+      "title": "gpilot",
       "properties": {
-        "gitpilot.defaultMode": {
+        "gpilot.defaultMode": {
           "type": "string",
           "enum": [
-            "gitpilot",
+            "gpilot",
             "native"
           ],
-          "default": "gitpilot",
-          "description": "Default sidebar mode on first activation. 'gitpilot' uses AI for commit and PR text; 'native' falls back to manual git commands."
+          "default": "gpilot",
+          "description": "Default sidebar mode on first activation. 'gpilot' uses AI for commit and PR text; 'native' falls back to manual git commands."
         },
-        "gitpilot.cliCommand": {
+        "gpilot.cliCommand": {
           "type": "string",
-          "default": "npx gitpilot",
-          "description": "Command used to invoke the gitpilot CLI from the extension. Override if gitpilot is installed under a different name or path."
+          "default": "npx gpilot",
+          "description": "Command used to invoke the gpilot CLI from the extension. Override if gpilot is installed under a different name or path."
         }
       }
     }

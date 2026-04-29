@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Wrap git operations needed across gitpilot modules so we have one
+Wrap git operations needed across gpilot modules so we have one
 tested place that talks to git, not scattered shell calls everywhere.
 
 ## Public API

@@ -276,7 +276,9 @@ function cleanMessage(raw: string): string {
   //    anywhere later in the response, prefer the later one.
   const firstLine = text.split("\n", 1)[0] ?? "";
   if (
-    /\b(here\s+is|here['']s|based\s+on|the\s+following|note that)\b/i.test(firstLine)
+    /\b(here\s+is|here['']s|based\s+on|the\s+following|note that)\b/i.test(
+      firstLine,
+    )
   ) {
     const lines = text.split("\n");
     const realHeaderIdx = lines.findIndex(
@@ -318,7 +320,8 @@ function inferType(subject: string): (typeof CONVENTIONAL_TYPES)[number] {
   if (/(^|\s)(fix|bug|patch|resolve)(\s|$)/.test(lower)) return "fix";
   if (/(^|\s)(doc|docs|readme|comment)/.test(lower)) return "docs";
   if (/(^|\s)(test|spec)/.test(lower)) return "test";
-  if (/(^|\s)(refactor|rename|move|extract|inline|cleanup)/.test(lower)) return "refactor";
+  if (/(^|\s)(refactor|rename|move|extract|inline|cleanup)/.test(lower))
+    return "refactor";
   if (/(^|\s)(perf|optimi[sz]e|speed)/.test(lower)) return "perf";
   if (/(^|\s)(build|ci|deploy|release|version|bump)/.test(lower))
     return lower.includes("ci") ? "ci" : "build";
@@ -383,7 +386,7 @@ function enforceScopePolicy(
 function validateMessage(message: string): void {
   if (!message) {
     throw new CommitGenerationError(
-      "AI returned an empty commit message. Choose regenerate, or switch providers/models in gitpilot.config.yml.",
+      "AI returned an empty commit message. Choose regenerate, or switch providers/models in gpilot.config.yml.",
     );
   }
   const header = message.split("\n", 1)[0] ?? "";

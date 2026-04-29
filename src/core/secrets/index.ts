@@ -19,13 +19,13 @@ export class SecretNotFoundError extends Error {
   readonly key: SecretKey;
 
   constructor(key: SecretKey) {
-    super(`Secret ${key} not found. Run: npx gitpilot auth`);
+    super(`Secret ${key} not found. Run: npx gpilot auth`);
     this.name = "SecretNotFoundError";
     this.key = key;
   }
 }
 
-const SERVICE_NAME = "gitpilot";
+const SERVICE_NAME = "gpilot";
 
 const secretKeySchema = z.enum([
   "ANTHROPIC_API_KEY",

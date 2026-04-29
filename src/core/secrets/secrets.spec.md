@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Securely store and retrieve API keys and tokens needed by gitpilot.
+Securely store and retrieve API keys and tokens needed by gpilot.
 Supports OS keychain (preferred) and environment variables (fallback).
 
 ## Public API
@@ -41,7 +41,7 @@ When calling get():
 
 ## Rules
 
-- Service name in keychain is "gitpilot"
+- Service name in keychain is "gpilot"
 - Never log secret values, only key names
 - Never write secrets to disk in plain text
 - delete() must remove from keychain only, not env vars
@@ -51,7 +51,7 @@ When calling get():
 
 - keytar fails to load → fall back to env-only mode silently
 - Missing required secret → throw SecretNotFoundError with message
-  "Secret <KEY> not found. Run: npx gitpilot auth"
+  "Secret <KEY> not found. Run: npx gpilot auth"
 
 ## Tests required
 

@@ -93,7 +93,7 @@ export function createGitHubPlatform(config: GitHubConfig): GitPlatform;
 ## Error cases
 
 - 401 Unauthorized → GitHubError "GitHub token invalid or expired.
-  Run: npx gitpilot auth"
+  Run: npx gpilot auth"
 - 403 Forbidden → GitHubError "GitHub token lacks required permissions.
   Needs: repo, pull_requests"
 - 404 Not Found → GitHubError "PR #{prId} not found in {owner}/{repo}"

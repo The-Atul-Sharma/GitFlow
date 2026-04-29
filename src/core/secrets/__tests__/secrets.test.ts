@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SecretKey, Secrets } from "../index.ts";
 
-const SERVICE_NAME = "gitpilot";
+const SERVICE_NAME = "gpilot";
 
 interface KeytarMock {
   setPassword: ReturnType<typeof vi.fn>;
@@ -129,7 +129,7 @@ describe("get", () => {
 });
 
 describe("set", () => {
-  it("writes the value to the keychain under the gitpilot service", async () => {
+  it("writes the value to the keychain under the gpilot service", async () => {
     const keytar = makeKeytarMock();
     const { createSecrets } = await importWithKeytar(keytar);
 
@@ -282,7 +282,7 @@ describe("SecretNotFoundError", () => {
     expect(err.name).toBe("SecretNotFoundError");
     expect(err.key).toBe("ANTHROPIC_API_KEY");
     expect(err.message).toBe(
-      "Secret ANTHROPIC_API_KEY not found. Run: npx gitpilot auth",
+      "Secret ANTHROPIC_API_KEY not found. Run: npx gpilot auth",
     );
   });
 });

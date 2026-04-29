@@ -32,20 +32,37 @@ function StatusRow({ label, hint, ok }: StatusRowProps) {
         }}
         aria-hidden="true"
       >
-        <span style={{ fontSize: 9, color: ok ? c.green : c.red, fontWeight: 700 }}>
+        <span
+          style={{ fontSize: 9, color: ok ? c.green : c.red, fontWeight: 700 }}
+        >
           {ok ? "✓" : "✕"}
         </span>
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 11.5, color: ok ? c.text : c.textMuted, fontFamily: ui }}>
+        <div
+          style={{
+            fontSize: 11.5,
+            color: ok ? c.text : c.textMuted,
+            fontFamily: ui,
+          }}
+        >
           {label}
         </div>
-        <div style={{ fontSize: 9.5, color: c.textSubtle, fontFamily: ui, marginTop: 1 }}>
+        <div
+          style={{
+            fontSize: 9.5,
+            color: c.textSubtle,
+            fontFamily: ui,
+            marginTop: 1,
+          }}
+        >
           {hint}
         </div>
       </div>
       {ok ? (
-        <span style={{ fontSize: 9.5, color: c.green, fontFamily: ui }}>connected</span>
+        <span style={{ fontSize: 9.5, color: c.green, fontFamily: ui }}>
+          connected
+        </span>
       ) : null}
     </div>
   );
@@ -67,7 +84,7 @@ export function SetupScreen({
   const blurb = isOllama
     ? "Run fully local — no AI key needed. Only a platform token is required. Stored securely in your system keychain."
     : everythingMissing
-      ? "GitPilot needs an AI provider key and a platform token. All credentials are stored securely in your system keychain."
+      ? "gpilot needs an AI provider key and a platform token. All credentials are stored securely in your system keychain."
       : "Add the missing token to keep going. Credentials are stored in your system keychain.";
   const icon = isOllama ? "⬡" : everythingMissing ? "🔑" : "⚡";
   const iconBg = isOllama
@@ -179,7 +196,8 @@ export function SetupScreen({
       {aiConfigured && !platformConfigured ? (
         <div
           style={{
-            background: "color-mix(in srgb, var(--vscode-testing-iconPassed, #3fc88f) 8%, transparent)",
+            background:
+              "color-mix(in srgb, var(--vscode-testing-iconPassed, #3fc88f) 8%, transparent)",
             border: `1px solid color-mix(in srgb, var(--vscode-testing-iconPassed, #3fc88f) 22%, transparent)`,
             borderRadius: 6,
             padding: "8px 12px",

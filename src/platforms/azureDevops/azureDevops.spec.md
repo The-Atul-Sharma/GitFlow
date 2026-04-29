@@ -147,12 +147,12 @@ All requests must include: `?api-version=7.0`
 ## Error cases
 
 - 401 → AzureDevOpsError "Azure DevOps PAT invalid or expired.
-  Run: npx gitpilot auth"
+  Run: npx gpilot auth"
 - 403 → AzureDevOpsError "PAT lacks required permissions.
   Needs: Code (Read & Write), Pull Request Threads (Read & Write)"
 - 404 PR → AzureDevOpsError "PR #{prId} not found in {org}/{project}"
 - 404 repo → AzureDevOpsError "Repository {repositoryId} not found.
-  Check org, project, and repository name in gitpilot.config.yml"
+  Check org, project, and repository name in gpilot.config.yml"
 - 409 Conflict → AzureDevOpsError "PR already exists for this branch"
 - 429 rate limit → retry once after 60s, throw if still fails
 - Network failure → wrap in AzureDevOpsError with original message

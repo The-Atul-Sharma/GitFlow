@@ -90,7 +90,7 @@ const reviewRuleSchema = z.object({
     .string()
     .min(
       1,
-      'rule id is empty. Set "id" to a non-empty string in gitpilot.config.yml.',
+      'rule id is empty. Set "id" to a non-empty string in gpilot.config.yml.',
     ),
   description: z
     .string()
@@ -246,7 +246,15 @@ function extractJsonObject(text: string): string | null {
   return text.slice(start, end + 1);
 }
 
-const ARRAY_WRAPPER_KEYS = ["issues", "items", "data", "result", "results", "review", "comments"] as const;
+const ARRAY_WRAPPER_KEYS = [
+  "issues",
+  "items",
+  "data",
+  "result",
+  "results",
+  "review",
+  "comments",
+] as const;
 
 function unwrapIssuesArray(parsed: unknown): unknown {
   if (Array.isArray(parsed)) return parsed;
@@ -257,7 +265,10 @@ function unwrapIssuesArray(parsed: unknown): unknown {
       if (Array.isArray(value)) return value;
     }
     // Single issue returned as a bare object — wrap it.
-    if (typeof obj["file"] === "string" && (typeof obj["line"] === "number" || typeof obj["line"] === "string")) {
+    if (
+      typeof obj["file"] === "string" &&
+      (typeof obj["line"] === "number" || typeof obj["line"] === "string")
+    ) {
       return [obj];
     }
   }
@@ -275,8 +286,7 @@ interface RescuedIssue {
 function rescueIssue(raw: unknown): RescuedIssue | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
-  const file =
-    obj["file"] ?? obj["path"] ?? obj["filename"] ?? obj["filePath"];
+  const file = obj["file"] ?? obj["path"] ?? obj["filename"] ?? obj["filePath"];
   const lineRaw =
     obj["line"] ?? obj["lineNumber"] ?? obj["line_number"] ?? obj["lineNo"];
   const line =
@@ -292,7 +302,10 @@ function rescueIssue(raw: unknown): RescuedIssue | null {
   const comment =
     obj["comment"] ?? obj["message"] ?? obj["description"] ?? obj["text"];
   const suggestedFix =
-    obj["suggestedFix"] ?? obj["suggested_fix"] ?? obj["fix"] ?? obj["suggestion"];
+    obj["suggestedFix"] ??
+    obj["suggested_fix"] ??
+    obj["fix"] ??
+    obj["suggestion"];
   return { file, line, severity, comment, suggestedFix };
 }
 
@@ -317,7 +330,7 @@ function parseIssues(raw: string): InlineIssue[] {
   const jsonText = jsonArray ?? jsonObject;
   if (!jsonText) {
     throw new PrReviewerError(
-      "AI did not return a JSON array of issues. Re-run, or switch providers/models in gitpilot.config.yml.",
+      "AI did not return a JSON array of issues. Re-run, or switch providers/models in gpilot.config.yml.",
     );
   }
 
@@ -327,14 +340,14 @@ function parseIssues(raw: string): InlineIssue[] {
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new PrReviewerError(
-      `AI output was not valid JSON (${reason}). Re-run, or switch providers/models in gitpilot.config.yml.`,
+      `AI output was not valid JSON (${reason}). Re-run, or switch providers/models in gpilot.config.yml.`,
     );
   }
 
   const unwrapped = unwrapIssuesArray(parsed);
   if (!Array.isArray(unwrapped)) {
     throw new PrReviewerError(
-      `AI output was not a JSON array of issues (got ${typeof unwrapped}). Re-run, or switch providers/models in gitpilot.config.yml.`,
+      `AI output was not a JSON array of issues (got ${typeof unwrapped}). Re-run, or switch providers/models in gpilot.config.yml.`,
     );
   }
 
@@ -346,7 +359,7 @@ function parseIssues(raw: string): InlineIssue[] {
   );
   if (objectsOnly.length === 0 && unwrapped.length > 0) {
     throw new PrReviewerError(
-      `AI returned a list of strings instead of issue objects. Re-run, or switch to a stronger model in gitpilot.config.yml.`,
+      `AI returned a list of strings instead of issue objects. Re-run, or switch to a stronger model in gpilot.config.yml.`,
     );
   }
 
@@ -360,7 +373,7 @@ function parseIssues(raw: string): InlineIssue[] {
     const path = issue?.path.join(".") ?? "";
     const message = issue?.message ?? "invalid issue structure";
     throw new PrReviewerError(
-      `AI output failed validation${path ? ` at "${path}"` : ""}: ${message}. Re-run, or switch providers/models in gitpilot.config.yml.`,
+      `AI output failed validation${path ? ` at "${path}"` : ""}: ${message}. Re-run, or switch providers/models in gpilot.config.yml.`,
     );
   }
   return result.data.map((d) => {

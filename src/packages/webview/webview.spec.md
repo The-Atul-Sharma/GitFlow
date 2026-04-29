@@ -164,7 +164,7 @@ through native VS Code prompts.
 ## Header
 
 - Status dot + label: `Ready` / `Running…` / `Error` / `Setup
-  required`.
+required`.
 - AI on/off toggle (hardcoded blue when on).
 - Model selector — `<select>` capped at `max-width: 130px` with native
   `text-overflow: ellipsis`. Full label visible in `title=` tooltip.
@@ -195,50 +195,50 @@ in `src/types.ts`.
 
 ### Extension → webview (`ExtensionMessage`)
 
-| Type                  | Payload                                                       |
-| --------------------- | ------------------------------------------------------------- |
-| `configUpdate`        | `{ provider, model }` — current model selection               |
-| `modelOptionsUpdate`  | `{ models: ModelEntry[] }` — full picker list                 |
-| `commandRunning`      | `{ command }` — turns on header spinner / disables CTAs       |
-| `commandDone`         | `{ command }`                                                 |
-| `commandFailed`       | `{ command, error }` — shown in red error banner              |
-| `setupStatus`         | `{ aiConfigured, platformConfigured, ready }`                 |
-| `commitDraft`         | `{ message }`                                                 |
-| `prDraft`             | `{ title, description }`                                      |
-| `reviewResult`        | `{ issues: InlineIssue[] }`                                   |
-| `repoStatus`          | `{ status: RepoStatus }`                                      |
-| `modeUpdate`          | `{ mode: "gitpilot" \| "native" }` — drives AI on/off toggle  |
-| `specFilePicked`      | `{ path }` — set after extension shows QuickPick              |
-| `specGenerated`       | `{ path, preview }` — written file + body for inline display  |
-| `openDiffsUpdate`     | `{ paths: string[] }` — full set of diff tabs the host has open |
+| Type                 | Payload                                                         |
+| -------------------- | --------------------------------------------------------------- |
+| `configUpdate`       | `{ provider, model }` — current model selection                 |
+| `modelOptionsUpdate` | `{ models: ModelEntry[] }` — full picker list                   |
+| `commandRunning`     | `{ command }` — turns on header spinner / disables CTAs         |
+| `commandDone`        | `{ command }`                                                   |
+| `commandFailed`      | `{ command, error }` — shown in red error banner                |
+| `setupStatus`        | `{ aiConfigured, platformConfigured, ready }`                   |
+| `commitDraft`        | `{ message }`                                                   |
+| `prDraft`            | `{ title, description }`                                        |
+| `reviewResult`       | `{ issues: InlineIssue[] }`                                     |
+| `repoStatus`         | `{ status: RepoStatus }`                                        |
+| `modeUpdate`         | `{ mode: "gpilot" \| "native" }` — drives AI on/off toggle      |
+| `specFilePicked`     | `{ path }` — set after extension shows QuickPick                |
+| `specGenerated`      | `{ path, preview }` — written file + body for inline display    |
+| `openDiffsUpdate`    | `{ paths: string[] }` — full set of diff tabs the host has open |
 
 ### Webview → extension (`WebviewMessage`)
 
-| Type             | Payload                                          |
-| ---------------- | ------------------------------------------------ |
-| `requestState`   | (none) — full state refresh                      |
-| `refreshStatus`  | (none) — repo status only                        |
-| `setupKeys`      | (none) — open keychain manager                   |
-| `switchModel`    | `{ provider, model }`                            |
-| `setMode`        | `{ mode }` — toggles AI on/off                   |
-| `generateCommit` | (none)                                           |
-| `commitMessage`  | `{ message }`                                    |
-| `generatePr`     | (none)                                           |
-| `createPr`       | `{ title, description }`                         |
-| `pushBranch`     | (none) — `git push -u origin HEAD`               |
-| `runReview`      | (none)                                           |
-| `publishReview`  | (none) — `gitpilot review --publish`             |
-| `openPr`         | (none) — `gh pr view --web`                      |
-| `previewFix`     | `{ issueId }`                                    |
-| `applyFix`       | `{ issueId }`                                    |
-| `openWorkingTree`| (none)                                           |
-| `openFileDiff`   | `{ path, staged }` — staged decides HEAD↔index vs HEAD↔worktree |
-| `closeFileDiff`  | `{ path }`                                       |
-| `stageFile`      | `{ path }`                                       |
-| `unstageFile`    | `{ path }`                                       |
-| `pickSpecFile`   | (none)                                           |
-| `generateSpec`   | `{ path, sections: string[] }`                   |
-| `openSpec`       | `{ path }`                                       |
+| Type              | Payload                                                         |
+| ----------------- | --------------------------------------------------------------- |
+| `requestState`    | (none) — full state refresh                                     |
+| `refreshStatus`   | (none) — repo status only                                       |
+| `setupKeys`       | (none) — open keychain manager                                  |
+| `switchModel`     | `{ provider, model }`                                           |
+| `setMode`         | `{ mode }` — toggles AI on/off                                  |
+| `generateCommit`  | (none)                                                          |
+| `commitMessage`   | `{ message }`                                                   |
+| `generatePr`      | (none)                                                          |
+| `createPr`        | `{ title, description }`                                        |
+| `pushBranch`      | (none) — `git push -u origin HEAD`                              |
+| `runReview`       | (none)                                                          |
+| `publishReview`   | (none) — `gpilot review --publish`                              |
+| `openPr`          | (none) — `gh pr view --web`                                     |
+| `previewFix`      | `{ issueId }`                                                   |
+| `applyFix`        | `{ issueId }`                                                   |
+| `openWorkingTree` | (none)                                                          |
+| `openFileDiff`    | `{ path, staged }` — staged decides HEAD↔index vs HEAD↔worktree |
+| `closeFileDiff`   | `{ path }`                                                      |
+| `stageFile`       | `{ path }`                                                      |
+| `unstageFile`     | `{ path }`                                                      |
+| `pickSpecFile`    | (none)                                                          |
+| `generateSpec`    | `{ path, sections: string[] }`                                  |
+| `openSpec`        | `{ path }`                                                      |
 
 ## Data types
 
@@ -271,7 +271,7 @@ interface RepoStatus {
   }>;
 }
 
-type gitpilotMode = "gitpilot" | "native";
+type gpilotMode = "gpilot" | "native";
 ```
 
 ## Styling rules
@@ -333,7 +333,7 @@ src/
 - No external CSS / fonts / icons. Codicon font may be loaded via the
   extension if available.
 - Vite config sets `base: './'` and `rollupOptions.output.entryFileNames =
-  'assets/[name].js'` for predictable webview asset paths.
+'assets/[name].js'` for predictable webview asset paths.
 - Setup screen never shows input fields — secret entry is delegated to
   VS Code prompts.
 - Tabs are disabled (greyed, `pointer-events: none`) only when

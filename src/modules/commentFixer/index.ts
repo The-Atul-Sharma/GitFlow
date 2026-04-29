@@ -250,13 +250,13 @@ async function generateFix(
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new CommentFixerError(
-      `AI failed to generate a fix for comment ${comment.id}: ${reason}. Re-run, or switch providers/models in gitpilot.config.yml.`,
+      `AI failed to generate a fix for comment ${comment.id}: ${reason}. Re-run, or switch providers/models in gpilot.config.yml.`,
     );
   }
   const cleaned = stripCodeFence(raw).trimEnd();
   if (!cleaned.trim()) {
     throw new CommentFixerError(
-      `AI returned empty content for comment ${comment.id}. Re-run, or switch providers/models in gitpilot.config.yml.`,
+      `AI returned empty content for comment ${comment.id}. Re-run, or switch providers/models in gpilot.config.yml.`,
     );
   }
   return cleaned;
@@ -384,7 +384,7 @@ async function fetchComment(
   const match = comments.find((c) => c.id === commentId);
   if (!match) {
     throw new CommentFixerError(
-      `Comment ${commentId} not found in PR ${prId}. Re-run gitpilot review to refresh comment ids, or pass a valid commentId.`,
+      `Comment ${commentId} not found in PR ${prId}. Re-run gpilot review to refresh comment ids, or pass a valid commentId.`,
     );
   }
   return match;

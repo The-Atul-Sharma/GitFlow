@@ -56,7 +56,7 @@ const configSchema = z.object({
     .string()
     .min(
       1,
-      "Azure DevOps PAT is empty. Run: npx gitpilot auth and store AZURE_DEVOPS_PAT.",
+      "Azure DevOps PAT is empty. Run: npx gpilot auth and store AZURE_DEVOPS_PAT.",
     ),
 });
 
@@ -164,7 +164,7 @@ async function throwForStatus(
 
   if (response.status === 401) {
     throw new AzureDevOpsError(
-      "Azure DevOps PAT invalid or expired. Run: npx gitpilot auth",
+      "Azure DevOps PAT invalid or expired. Run: npx gpilot auth",
       401,
     );
   }
@@ -182,7 +182,7 @@ async function throwForStatus(
       );
     }
     throw new AzureDevOpsError(
-      `Repository ${context.repositoryId} not found. Check org, project, and repository name in gitpilot.config.yml`,
+      `Repository ${context.repositoryId} not found. Check org, project, and repository name in gpilot.config.yml`,
       404,
     );
   }

@@ -1,10 +1,10 @@
 ai:
   provider: ollama
-  model: deepseek-coder:6.7b
+  model: qwen2.5-coder:14b-instruct-q4_K_M
 platform:
   type: github
   owner: the-atul-sharma
-  repo: gitpilot
+  repo: gpilot
 mode:
   commit: interactive
   pr_create: interactive

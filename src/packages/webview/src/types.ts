@@ -30,12 +30,12 @@ export const repoStatusSchema = z.object({
   ),
 });
 
-export const gitpilotModeSchema = z.enum(["gitpilot", "native"]);
+export const gpilotModeSchema = z.enum(["gpilot", "native"]);
 
 export type InlineIssue = z.infer<typeof inlineIssueSchema>;
 export type ModelEntry = z.infer<typeof modelEntrySchema>;
 export type RepoStatus = z.infer<typeof repoStatusSchema>;
-export type gitpilotMode = z.infer<typeof gitpilotModeSchema>;
+export type gpilotMode = z.infer<typeof gpilotModeSchema>;
 
 export const extensionMessageSchema = z.discriminatedUnion("type", [
   z.object({
@@ -85,7 +85,7 @@ export const extensionMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("modeUpdate"),
-    mode: gitpilotModeSchema,
+    mode: gpilotModeSchema,
   }),
   z.object({
     type: z.literal("specFilePicked"),
@@ -157,7 +157,7 @@ export const webviewMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("setMode"),
-    mode: gitpilotModeSchema,
+    mode: gpilotModeSchema,
   }),
   z.object({ type: z.literal("pickSpecFile") }),
   z.object({

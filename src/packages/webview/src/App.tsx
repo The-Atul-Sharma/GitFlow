@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   ExtensionMessage,
-  gitpilotMode,
+  gpilotMode,
   InlineIssue,
   ModelEntry,
   RepoStatus,
@@ -52,17 +52,21 @@ const PROVIDER_LABEL: Record<string, string> = {
 
 export function App() {
   const [currentModel, setCurrentModel] = useState<CurrentModel>(DEFAULT_MODEL);
-  const [modelOptions, setModelOptions] =
-    useState<ReadonlyArray<ModelEntry>>(DEFAULT_MODEL_OPTIONS);
+  const [modelOptions, setModelOptions] = useState<ReadonlyArray<ModelEntry>>(
+    DEFAULT_MODEL_OPTIONS,
+  );
   const [runningCommand, setRunningCommand] = useState<string | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [ready, setReady] = useState<boolean>(false);
   const [aiConfigured, setAiConfigured] = useState<boolean>(false);
   const [platformConfigured, setPlatformConfigured] = useState<boolean>(false);
-  const [mode, setMode] = useState<gitpilotMode>("gitpilot");
+  const [mode, setMode] = useState<gpilotMode>("gpilot");
   const [repoStatus, setRepoStatus] = useState<RepoStatus>(DEFAULT_STATUS);
   const [commitDraft, setCommitDraft] = useState<string>("");
-  const [prDraft, setPrDraft] = useState<{ title: string; description: string }>({
+  const [prDraft, setPrDraft] = useState<{
+    title: string;
+    description: string;
+  }>({
     title: "",
     description: "",
   });
@@ -70,7 +74,9 @@ export function App() {
   const [activeTab, setActiveTab] = useState<MainTab>("Commit");
   const [autoReview, setAutoReview] = useState<boolean>(false);
   const [specFile, setSpecFile] = useState<string | null>(null);
-  const [specGeneratedPath, setSpecGeneratedPath] = useState<string | null>(null);
+  const [specGeneratedPath, setSpecGeneratedPath] = useState<string | null>(
+    null,
+  );
   const [specPreview, setSpecPreview] = useState<string>("");
   const [openedDiffs, setOpenedDiffs] = useState<string[]>([]);
 
@@ -167,12 +173,12 @@ export function App() {
   }
 
   function handleToggleAi(): void {
-    const next: gitpilotMode = mode === "gitpilot" ? "native" : "gitpilot";
+    const next: gpilotMode = mode === "gpilot" ? "native" : "gpilot";
     sendMessage({ type: "setMode", mode: next });
     setMode(next);
   }
 
-  const aiOn = mode === "gitpilot";
+  const aiOn = mode === "gpilot";
   const locked = !aiOn;
   const needsSetup = aiOn && !ready;
 
@@ -184,14 +190,16 @@ export function App() {
         ? "error"
         : "ready";
 
-  const providerLabel = PROVIDER_LABEL[currentModel.provider] ?? currentModel.provider;
-  const providerStatus = currentModel.provider === "ollama"
-    ? aiConfigured
-      ? `${providerLabel} running`
-      : "Ollama not running"
-    : aiConfigured
-      ? `${providerLabel} connected`
-      : "Not connected";
+  const providerLabel =
+    PROVIDER_LABEL[currentModel.provider] ?? currentModel.provider;
+  const providerStatus =
+    currentModel.provider === "ollama"
+      ? aiConfigured
+        ? `${providerLabel} running`
+        : "Ollama not running"
+      : aiConfigured
+        ? `${providerLabel} connected`
+        : "Not connected";
   // For Ollama, "ok" means the local server is reachable. For hosted providers,
   // it means a key exists in the keychain. Either way `aiConfigured` already
   // encodes that — see ExtensionContext.postSetupStatus.
@@ -239,7 +247,8 @@ export function App() {
                   border: `1px solid color-mix(in srgb, var(--vscode-errorForeground, #f48771) 35%, transparent)`,
                   borderRadius: 6,
                   padding: "6px 10px",
-                  background: "color-mix(in srgb, var(--vscode-errorForeground, #f48771) 8%, transparent)",
+                  background:
+                    "color-mix(in srgb, var(--vscode-errorForeground, #f48771) 8%, transparent)",
                 }}
                 data-testid="error-banner"
               >
@@ -335,7 +344,11 @@ export function App() {
         </>
       )}
 
-      <Footer provider={providerStatus} ok={providerOk} onManage={handleSetupKeys} />
+      <Footer
+        provider={providerStatus}
+        ok={providerOk}
+        onManage={handleSetupKeys}
+      />
     </div>
   );
 }

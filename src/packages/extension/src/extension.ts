@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
 
 export type ReviewSeverity = "blocker" | "warning" | "info";
 
-export type gitpilotMode = "gitpilot" | "native";
+export type gpilotMode = "gpilot" | "native";
 
 export interface ReviewIssue {
   id: string;
@@ -73,7 +73,7 @@ export interface ExtensionMessageFromWebview {
   message?: string;
   title?: string;
   description?: string;
-  mode?: gitpilotMode;
+  mode?: gpilotMode;
   path?: string;
   issueId?: string;
   sections?: string[];
@@ -110,7 +110,7 @@ export interface ExtensionMessageToWebview {
   description?: string;
   issues?: ReviewIssue[];
   status?: RepoStatus;
-  mode?: gitpilotMode;
+  mode?: gpilotMode;
   path?: string;
   preview?: string;
   paths?: string[];
@@ -123,10 +123,10 @@ export class ExtensionError extends Error {
   }
 }
 
-export const VIEW_ID = "gitpilot.panel";
+export const VIEW_ID = "gpilot.panel";
 
-export const FIRST_LAUNCH_STATE_KEY = "gitpilot.firstLaunchComplete";
-export const MODE_STATE_KEY = "gitpilot.mode";
+export const FIRST_LAUNCH_STATE_KEY = "gpilot.firstLaunchComplete";
+export const MODE_STATE_KEY = "gpilot.mode";
 
 export type SecretKey =
   | "ANTHROPIC_API_KEY"
@@ -261,9 +261,9 @@ async function fetchLocalOllamaModelOptions(): Promise<ModelOption[]> {
   }
 }
 
-const TERMINAL_NAME = "gitpilot";
+const TERMINAL_NAME = "gpilot";
 
-const SECRETS_SERVICE_NAME = "gitpilot";
+const SECRETS_SERVICE_NAME = "gpilot";
 
 interface KeytarLike {
   setPassword(
@@ -333,7 +333,7 @@ export async function promptForSecret(
   if (value === "") return existed;
   await setSecret(descriptor.key, value);
   await vscode.window.showInformationMessage(
-    `gitpilot: Saved ${descriptor.label}.`,
+    `gpilot: Saved ${descriptor.label}.`,
   );
   return true;
 }
@@ -388,7 +388,7 @@ async function clearSecretFlow(): Promise<boolean> {
   }
   if (items.length === 0) {
     await vscode.window.showInformationMessage(
-      "gitpilot: No saved keys to clear.",
+      "gpilot: No saved keys to clear.",
     );
     return false;
   }
@@ -399,7 +399,7 @@ async function clearSecretFlow(): Promise<boolean> {
   if (!picked) return false;
   await deleteSecret(picked.descriptor.key);
   await vscode.window.showInformationMessage(
-    `gitpilot: Cleared ${picked.descriptor.label}.`,
+    `gpilot: Cleared ${picked.descriptor.label}.`,
   );
   return true;
 }
@@ -409,7 +409,7 @@ export async function runFirstLaunchSetupIfNeeded(
 ): Promise<void> {
   const done = context.globalState.get<boolean>(FIRST_LAUNCH_STATE_KEY);
   if (done) return;
-  const mode = context.globalState.get<gitpilotMode>(MODE_STATE_KEY) ?? "gitpilot";
+  const mode = context.globalState.get<gpilotMode>(MODE_STATE_KEY) ?? "gpilot";
   if (mode === "native") {
     await context.globalState.update(FIRST_LAUNCH_STATE_KEY, true);
     return;
@@ -426,14 +426,16 @@ export async function runFirstLaunchSetupIfNeeded(
   const current = root ? await readCurrentModel(root) : null;
   const provider = current?.provider ?? "claude";
   const ready =
-    provider === "ollama" ? platformConfigured : aiConfigured && platformConfigured;
+    provider === "ollama"
+      ? platformConfigured
+      : aiConfigured && platformConfigured;
   if (ready) {
     await context.globalState.update(FIRST_LAUNCH_STATE_KEY, true);
     return;
   }
 
   const choice = await vscode.window.showInformationMessage(
-    "gitpilot needs AI and platform keys before using the panel. Set them now?",
+    "gpilot needs AI and platform keys before using the panel. Set them now?",
     "Set up keys",
     "Later",
   );
@@ -465,33 +467,40 @@ function workspaceRoot(): string | undefined {
 }
 
 /**
- * Run a gitpilot CLI command and capture its stdout. Used for dry-run /
+ * Run a gpilot CLI command and capture its stdout. Used for dry-run /
  * JSON commands where the extension needs the data inline rather than
  * showing it to the user in a terminal.
  */
-async function execgitpilot(args: string[]): Promise<string> {
+async function execgpilot(args: string[]): Promise<string> {
   const root = workspaceRoot();
   if (!root) {
     throw new ExtensionError(
-      "Open a workspace folder before running gitpilot commands.",
+      "Open a workspace folder before running gpilot commands.",
     );
   }
   const env = { ...process.env };
-  for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GITHUB_TOKEN", "AZURE_DEVOPS_PAT", "GITLAB_TOKEN"] as const) {
+  for (const key of [
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "GEMINI_API_KEY",
+    "GITHUB_TOKEN",
+    "AZURE_DEVOPS_PAT",
+    "GITLAB_TOKEN",
+  ] as const) {
     if (!env[key]) {
       const fromKeychain = await readSecret(key);
       if (fromKeychain) env[key] = fromKeychain;
     }
   }
   try {
-    const { stdout, stderr } = await execFileAsync("npx", ["gitpilot", ...args], {
+    const { stdout, stderr } = await execFileAsync("npx", ["gpilot", ...args], {
       cwd: root,
       maxBuffer: 50 * 1024 * 1024,
       env,
     });
     if (!stdout.trim()) {
       throw new ExtensionError(
-        `gitpilot ${args.join(" ")} returned no output. ${stderr.trim() || "Check that the gitpilot CLI is installed and the AI provider key is configured."}`,
+        `gpilot ${args.join(" ")} returned no output. ${stderr.trim() || "Check that the gpilot CLI is installed and the AI provider key is configured."}`,
       );
     }
     return stdout;
@@ -499,7 +508,7 @@ async function execgitpilot(args: string[]): Promise<string> {
     if (error instanceof ExtensionError) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw new ExtensionError(
-      `gitpilot ${args.join(" ")} failed: ${message}. Verify the CLI is installed (npx gitpilot --version) and your API keys are saved via Manage Keys.`,
+      `gpilot ${args.join(" ")} failed: ${message}. Verify the CLI is installed (npx gpilot --version) and your API keys are saved via Manage Keys.`,
     );
   }
 }
@@ -517,14 +526,14 @@ function findOrCreateTerminal(): vscode.Terminal {
     : vscode.window.createTerminal(TERMINAL_NAME);
 }
 
-/** Open a terminal and run a gitpilot CLI command interactively. */
+/** Open a terminal and run a gpilot CLI command interactively. */
 export async function runCommand(
   command: string,
   args: string[] = [],
 ): Promise<void> {
   const terminal = findOrCreateTerminal();
   terminal.sendText(
-    `npx gitpilot ${command}${args.length ? " " + args.join(" ") : ""}`,
+    `npx gpilot ${command}${args.length ? " " + args.join(" ") : ""}`,
   );
 }
 
@@ -552,12 +561,12 @@ function gitUriForRef(path: string, ref: "HEAD" | "~"): vscode.Uri {
 }
 
 interface FileChangeShape {
-  isUntracked: boolean;   // ??
-  addedAtIndex: boolean;  // first char A
+  isUntracked: boolean; // ??
+  addedAtIndex: boolean; // first char A
   addedAtWorktree: boolean; // second char A
-  deletedAtIndex: boolean;  // first char D
+  deletedAtIndex: boolean; // first char D
   deletedAtWorktree: boolean; // second char D
-  renamedAtIndex: boolean;  // first char R
+  renamedAtIndex: boolean; // first char R
 }
 
 function shapeFromStatus(status: string): FileChangeShape {
@@ -686,7 +695,9 @@ async function pickRepoFile(): Promise<string | null> {
     1000,
   );
   if (items.length === 0) {
-    await vscode.window.showInformationMessage("gitpilot: No files found in workspace.");
+    await vscode.window.showInformationMessage(
+      "gpilot: No files found in workspace.",
+    );
     return null;
   }
   const picks: vscode.QuickPickItem[] = items.map((uri) => ({
@@ -731,7 +742,12 @@ function parseExports(source: string): ParsedExport[] {
     }
     if (trimmed.startsWith("/**")) {
       inDoc = !trimmed.endsWith("*/");
-      pendingDocLines = [trimmed.replace(/^\/\*\*\s?/, "").replace(/\*\/$/, "").trim()];
+      pendingDocLines = [
+        trimmed
+          .replace(/^\/\*\*\s?/, "")
+          .replace(/\*\/$/, "")
+          .trim(),
+      ];
       if (!inDoc) {
         pendingDoc = pendingDocLines.join(" ").trim();
         pendingDocLines = [];
@@ -750,7 +766,11 @@ function parseExports(source: string): ParsedExport[] {
       }
       exports.push({ signature, doc: pendingDoc, kind, name });
       pendingDoc = null;
-    } else if (trimmed && !trimmed.startsWith("//") && !trimmed.startsWith("import")) {
+    } else if (
+      trimmed &&
+      !trimmed.startsWith("//") &&
+      !trimmed.startsWith("import")
+    ) {
       pendingDoc = null;
     }
   }
@@ -801,7 +821,9 @@ function inferEdges(source: string, exports: ParsedExport[]): string {
     source.matchAll(/throw\s+new\s+([A-Za-z0-9_]+Error)\s*\(/g),
   ).map((m) => m[1] ?? "");
   const uniqueErrors = Array.from(new Set(errorNames));
-  const asyncCount = exports.filter((e) => /\basync\b/.test(e.signature)).length;
+  const asyncCount = exports.filter((e) =>
+    /\basync\b/.test(e.signature),
+  ).length;
   const lines: string[] = [];
   if (uniqueErrors.length > 0) {
     lines.push(`Throws: ${uniqueErrors.map((n) => `\`${n}\``).join(", ")}.`);
@@ -813,7 +835,9 @@ function inferEdges(source: string, exports: ParsedExport[]): string {
   }
   const guardCount = (source.match(/^\s*(?:if|switch)\s*\(/gm) ?? []).length;
   if (guardCount > 0) {
-    lines.push(`Contains ${guardCount} guard branch${guardCount === 1 ? "" : "es"} for input validation and control flow.`);
+    lines.push(
+      `Contains ${guardCount} guard branch${guardCount === 1 ? "" : "es"} for input validation and control flow.`,
+    );
   }
   if (lines.length === 0) {
     return "No explicit error throws or async boundaries detected — failures propagate from upstream calls.";
@@ -850,9 +874,13 @@ async function callConfiguredAi(prompt: string): Promise<AICallResult | null> {
         }),
       });
       if (!response.ok) {
-        throw new ExtensionError(`Anthropic API error ${response.status}: ${await response.text()}`);
+        throw new ExtensionError(
+          `Anthropic API error ${response.status}: ${await response.text()}`,
+        );
       }
-      const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+      const data = (await response.json()) as {
+        content?: Array<{ type?: string; text?: string }>;
+      };
       const text = (data.content ?? [])
         .filter((block) => block.type === "text")
         .map((block) => block.text ?? "")
@@ -862,17 +890,25 @@ async function callConfiguredAi(prompt: string): Promise<AICallResult | null> {
     if (provider === "openai") {
       const key = await readSecret("OPENAI_API_KEY");
       if (!key) return null;
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: 2048,
-        }),
-      });
+      const response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${key}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 2048,
+          }),
+        },
+      );
       if (!response.ok) {
-        throw new ExtensionError(`OpenAI API error ${response.status}: ${await response.text()}`);
+        throw new ExtensionError(
+          `OpenAI API error ${response.status}: ${await response.text()}`,
+        );
       }
       const data = (await response.json()) as {
         choices?: Array<{ message?: { content?: string } }>;
@@ -894,13 +930,17 @@ async function callConfiguredAi(prompt: string): Promise<AICallResult | null> {
         },
       );
       if (!response.ok) {
-        throw new ExtensionError(`Gemini API error ${response.status}: ${await response.text()}`);
+        throw new ExtensionError(
+          `Gemini API error ${response.status}: ${await response.text()}`,
+        );
       }
       const data = (await response.json()) as {
         candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
       };
       const text =
-        data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+        data.candidates?.[0]?.content?.parts
+          ?.map((p) => p.text ?? "")
+          .join("") ?? "";
       return { text, source: "gemini" };
     }
     if (provider === "ollama") {
@@ -910,7 +950,9 @@ async function callConfiguredAi(prompt: string): Promise<AICallResult | null> {
         body: JSON.stringify({ model, prompt, stream: false }),
       });
       if (!response.ok) {
-        throw new ExtensionError(`Ollama API error ${response.status}: ${await response.text()}`);
+        throw new ExtensionError(
+          `Ollama API error ${response.status}: ${await response.text()}`,
+        );
       }
       const data = (await response.json()) as { response?: string };
       return { text: data.response ?? "", source: "ollama" };
@@ -950,7 +992,9 @@ function buildSpecPrompt(
     exportSummary,
     ``,
     `Required sections (omit any not listed):`,
-    wantsPurpose ? `- ## Purpose — what this file is responsible for, in 2-4 sentences.` : "",
+    wantsPurpose
+      ? `- ## Purpose — what this file is responsible for, in 2-4 sentences.`
+      : "",
     wantsApi
       ? `- ## API Surface — for each export: a level-3 heading with backticks around the name, then a short description of what it does and (for functions) its parameters and return type. Include a ts code fence with the signature.`
       : "",
@@ -985,7 +1029,10 @@ function buildHeuristicSpec(
   const lineCount = source.split("\n").length;
   const lines: string[] = [`# ${fileName}`, ""];
   lines.push(`> ${summarizeFile(source, fileName)}`, "");
-  lines.push(`Source: \`${relativePath}\` (${lineCount} lines, ${exports.length} exports)`, "");
+  lines.push(
+    `Source: \`${relativePath}\` (${lineCount} lines, ${exports.length} exports)`,
+    "",
+  );
   if (sections.includes("purpose")) {
     lines.push("## Purpose", "", summarizeFile(source, fileName), "");
   }
@@ -1020,7 +1067,9 @@ async function generateSpecForFile(
 ): Promise<{ path: string; preview: string }> {
   const root = workspaceRoot();
   if (!root) {
-    throw new ExtensionError("Open a workspace folder before generating a spec.");
+    throw new ExtensionError(
+      "Open a workspace folder before generating a spec.",
+    );
   }
   const sourceUri = workspaceFileUri(relativePath);
   const sourceContents = await readFile(sourceUri.fsPath, "utf8");
@@ -1037,7 +1086,13 @@ async function generateSpecForFile(
   if (aiResult && aiResult.text.trim()) {
     body = aiResult.text.trim();
   } else {
-    body = buildHeuristicSpec(fileName, relativePath, sourceContents, sections, exports);
+    body = buildHeuristicSpec(
+      fileName,
+      relativePath,
+      sourceContents,
+      sections,
+      exports,
+    );
   }
   await writeFile(specUri.fsPath, body, "utf8");
   return { path: specRelative, preview: body };
@@ -1093,7 +1148,7 @@ function lastJsonLine(stdout: string): string {
 }
 
 export async function generateCommitMessage(): Promise<string> {
-  const stdout = await execgitpilot(["commit", "--dry-run"]);
+  const stdout = await execgpilot(["commit", "--dry-run"]);
   const parsed = JSON.parse(lastJsonLine(stdout));
   const result = commitDryRunSchema.parse(parsed);
   return result.message;
@@ -1127,7 +1182,7 @@ export async function generatePrDraft(): Promise<{
   title: string;
   description: string;
 }> {
-  const stdout = await execgitpilot(["pr", "create", "--dry-run"]);
+  const stdout = await execgpilot(["pr", "create", "--dry-run"]);
   const parsed = JSON.parse(lastJsonLine(stdout));
   return prDryRunSchema.parse(parsed);
 }
@@ -1148,7 +1203,7 @@ export async function pushAndCreatePr(
 }
 
 export async function fetchReview(): Promise<ReviewIssue[]> {
-  const stdout = await execgitpilot(["review", "--json"]);
+  const stdout = await execgpilot(["review", "--json"]);
   const parsed = JSON.parse(lastJsonLine(stdout));
   const result = reviewJsonSchema.parse(parsed);
   return result.issues.map((issue, idx) => ({
@@ -1165,7 +1220,7 @@ export async function fetchReview(): Promise<ReviewIssue[]> {
 
 export async function fetchRepoStatus(): Promise<RepoStatus> {
   try {
-    const stdout = await execgitpilot(["status", "--json"]);
+    const stdout = await execgpilot(["status", "--json"]);
     const parsed = JSON.parse(lastJsonLine(stdout));
     const result = statusJsonSchema.parse(parsed);
     return {
@@ -1186,26 +1241,26 @@ export async function fetchRepoStatus(): Promise<RepoStatus> {
   }
 }
 
-export class gitpilotStatusBar {
+export class gpilotStatusBar {
   private readonly item: vscode.StatusBarItem;
 
   constructor(item?: vscode.StatusBarItem) {
     this.item =
       item ??
       vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    this.item.command = "gitpilot.showPanel";
+    this.item.command = "gpilot.showPanel";
     this.setReady();
     this.item.show();
   }
 
   setRunning(): void {
-    this.item.text = "$(sync~spin) gitpilot running...";
-    this.item.tooltip = "gitpilot command in progress";
+    this.item.text = "$(sync~spin) gpilot running...";
+    this.item.tooltip = "gpilot command in progress";
   }
 
   setReady(): void {
-    this.item.text = "$(check) gitpilot ready";
-    this.item.tooltip = "gitpilot is ready. Click to open the panel.";
+    this.item.text = "$(check) gpilot ready";
+    this.item.tooltip = "gpilot is ready. Click to open the panel.";
   }
 
   dispose(): void {
@@ -1218,7 +1273,7 @@ export async function readCurrentModel(
 ): Promise<{ provider: string; model: string } | null> {
   try {
     const raw = await readFile(
-      join(workspaceRoot, "gitpilot.config.yml"),
+      join(workspaceRoot, "gpilot.config.yml"),
       "utf8",
     );
     const parsed = parseYaml(raw) as {
@@ -1238,12 +1293,12 @@ async function writeCurrentModel(
   provider: string,
   model: string,
 ): Promise<void> {
-  const filePath = join(workspaceRoot, "gitpilot.config.yml");
+  const filePath = join(workspaceRoot, "gpilot.config.yml");
   const raw = await readFile(filePath, "utf8");
   const parsed = parseYaml(raw);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new ExtensionError(
-      "gitpilot.config.yml must be a YAML object at the root.",
+      "gpilot.config.yml must be a YAML object at the root.",
     );
   }
   const next = parsed as Record<string, unknown>;
@@ -1273,16 +1328,38 @@ function resolveCodiconDistUri(
   extensionUri: vscode.Uri,
 ): vscode.Uri | undefined {
   const candidates = [
-    vscode.Uri.joinPath(extensionUri, "node_modules", "@vscode", "codicons", "dist"),
-    vscode.Uri.joinPath(extensionUri, "..", "node_modules", "@vscode", "codicons", "dist"),
-    vscode.Uri.joinPath(extensionUri, "..", "..", "..", "node_modules", "@vscode", "codicons", "dist"),
+    vscode.Uri.joinPath(
+      extensionUri,
+      "node_modules",
+      "@vscode",
+      "codicons",
+      "dist",
+    ),
+    vscode.Uri.joinPath(
+      extensionUri,
+      "..",
+      "node_modules",
+      "@vscode",
+      "codicons",
+      "dist",
+    ),
+    vscode.Uri.joinPath(
+      extensionUri,
+      "..",
+      "..",
+      "..",
+      "node_modules",
+      "@vscode",
+      "codicons",
+      "dist",
+    ),
   ];
   return candidates.find((candidate) =>
     existsSync(join(candidate.fsPath, "codicon.css")),
   );
 }
 
-export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
+export class gpilotSidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_ID;
 
   private view?: vscode.WebviewView;
@@ -1291,7 +1368,7 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly statusBar: gitpilotStatusBar,
+    private readonly statusBar: gpilotStatusBar,
     private readonly context: vscode.ExtensionContext,
   ) {}
 
@@ -1420,19 +1497,17 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
     this.post({ type: "configUpdate", provider, model });
   }
 
-  public getMode(): gitpilotMode {
+  public getMode(): gpilotMode {
     return this.currentMode();
   }
 
-  public async setMode(mode: gitpilotMode): Promise<void> {
+  public async setMode(mode: gpilotMode): Promise<void> {
     await this.context.globalState.update(MODE_STATE_KEY, mode);
     this.post({ type: "modeUpdate", mode });
   }
 
-  private currentMode(): gitpilotMode {
-    return (
-      this.context.globalState.get<gitpilotMode>(MODE_STATE_KEY) ?? "gitpilot"
-    );
+  private currentMode(): gpilotMode {
+    return this.context.globalState.get<gpilotMode>(MODE_STATE_KEY) ?? "gpilot";
   }
 
   private async handleMessage(
@@ -1539,7 +1614,10 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
           if (!message.path) {
             throw new ExtensionError("generateSpec requires a file path.");
           }
-          const result = await generateSpecForFile(message.path, message.sections ?? []);
+          const result = await generateSpecForFile(
+            message.path,
+            message.sections ?? [],
+          );
           this.post({
             type: "specGenerated",
             path: result.path,
@@ -1580,7 +1658,11 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
         await this.runWithStatus("workingTree", async () => {
           const path = message.path ?? "";
           if (!path) return;
-          await openFileDiff(path, message.staged === true, message.status ?? "");
+          await openFileDiff(
+            path,
+            message.staged === true,
+            message.status ?? "",
+          );
           this.openedDiffs.add(path);
           this.broadcastOpenDiffs();
         });
@@ -1617,21 +1699,21 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
         const root = workspaceRoot();
         if (!root) {
           throw new ExtensionError(
-            "Open a workspace folder to update gitpilot.config.yml.",
+            "Open a workspace folder to update gpilot.config.yml.",
           );
         }
         await writeCurrentModel(root, message.provider, message.model);
         await vscode.window.showInformationMessage(
-          `gitpilot: Switched model to ${message.provider}/${message.model}.`,
+          `gpilot: Switched model to ${message.provider}/${message.model}.`,
         );
         this.notifyModelChanged(message.provider, message.model);
         await this.postSetupStatus();
         return;
       }
       case "setMode": {
-        if (message.mode !== "gitpilot" && message.mode !== "native") {
+        if (message.mode !== "gpilot" && message.mode !== "native") {
           throw new ExtensionError(
-            'setMode requires mode "gitpilot" or "native".',
+            'setMode requires mode "gpilot" or "native".',
           );
         }
         await this.context.globalState.update(MODE_STATE_KEY, message.mode);
@@ -1745,7 +1827,7 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${csp}" />
-  <title>gitpilot</title>
+  <title>gpilot</title>
   ${codiconCssUri ? `<link href="${codiconCssUri}" rel="stylesheet" />` : ""}
 </head>
 <body style="margin:0;padding:0;background:transparent;">
@@ -1758,7 +1840,7 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
 }
 
 export async function pickAndSwitchModel(
-  sidebar?: gitpilotSidebarProvider,
+  sidebar?: gpilotSidebarProvider,
 ): Promise<ModelOption | undefined> {
   const picked = await vscode.window.showQuickPick(
     MODEL_OPTIONS.map((m) => ({
@@ -1773,12 +1855,12 @@ export async function pickAndSwitchModel(
   const root = workspaceRoot();
   if (!root) {
     throw new ExtensionError(
-      "Open a workspace folder to update gitpilot.config.yml.",
+      "Open a workspace folder to update gpilot.config.yml.",
     );
   }
   await writeCurrentModel(root, picked.provider, picked.model);
   await vscode.window.showInformationMessage(
-    `gitpilot: Switched to ${picked.label}`,
+    `gpilot: Switched to ${picked.label}`,
   );
   sidebar?.notifyModelChanged(picked.provider, picked.model);
   return {
@@ -1798,8 +1880,8 @@ export async function promptAndReviewPR(): Promise<void> {
 }
 
 interface RegisterOptions {
-  sidebar: gitpilotSidebarProvider;
-  statusBar: gitpilotStatusBar;
+  sidebar: gpilotSidebarProvider;
+  statusBar: gpilotStatusBar;
 }
 
 export function registerCommands(
@@ -1821,23 +1903,20 @@ export function registerCommands(
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "gitpilot.commit",
+      "gpilot.commit",
       wrap(() => runCommand("commit")),
     ),
     vscode.commands.registerCommand(
-      "gitpilot.createPR",
+      "gpilot.createPR",
       wrap(() => runCommand("pr")),
     ),
+    vscode.commands.registerCommand("gpilot.reviewPR", wrap(promptAndReviewPR)),
     vscode.commands.registerCommand(
-      "gitpilot.reviewPR",
-      wrap(promptAndReviewPR),
-    ),
-    vscode.commands.registerCommand(
-      "gitpilot.fixAllBlockers",
+      "gpilot.fixAllBlockers",
       wrap(() => runCommand("fix", ["--all"])),
     ),
     vscode.commands.registerCommand(
-      "gitpilot.fixComment",
+      "gpilot.fixComment",
       wrap(async (commentId?: string, prId?: string) => {
         const args: string[] = [];
         if (prId) args.push("--pr", prId);
@@ -1846,33 +1925,33 @@ export function registerCommands(
       }),
     ),
     vscode.commands.registerCommand(
-      "gitpilot.switchModel",
+      "gpilot.switchModel",
       wrap(async () => {
         await pickAndSwitchModel(sidebar);
       }),
     ),
     vscode.commands.registerCommand(
-      "gitpilot.auth",
+      "gpilot.auth",
       wrap(async () => {
         await manageApiKeys();
         sidebar.refreshState();
       }),
     ),
-    vscode.commands.registerCommand("gitpilot.showPanel", () =>
+    vscode.commands.registerCommand("gpilot.showPanel", () =>
       vscode.commands.executeCommand(`${VIEW_ID}.focus`),
     ),
     vscode.commands.registerCommand(
-      "gitpilot.status",
+      "gpilot.status",
       wrap(() => runCommand("status")),
     ),
     vscode.commands.registerCommand(
-      "gitpilot.toggleMode",
+      "gpilot.toggleMode",
       wrap(async () => {
-        const next: gitpilotMode =
-          sidebar.getMode() === "gitpilot" ? "native" : "gitpilot";
+        const next: gpilotMode =
+          sidebar.getMode() === "gpilot" ? "native" : "gpilot";
         await sidebar.setMode(next);
         await vscode.window.showInformationMessage(
-          `gitpilot: Mode set to ${next === "gitpilot" ? "Gitpilot (AI)" : "Native Git"}.`,
+          `gpilot: Mode set to ${next === "gpilot" ? "gpilot (AI)" : "Native Git"}.`,
         );
       }),
     ),
@@ -1880,8 +1959,8 @@ export function registerCommands(
 }
 
 interface ActivateInternals {
-  sidebar: gitpilotSidebarProvider;
-  statusBar: gitpilotStatusBar;
+  sidebar: gpilotSidebarProvider;
+  statusBar: gpilotStatusBar;
 }
 
 const state: { internals: ActivateInternals | undefined } = {
@@ -1889,17 +1968,17 @@ const state: { internals: ActivateInternals | undefined } = {
 };
 
 export function activate(context: vscode.ExtensionContext): ActivateInternals {
-  const statusBar = new gitpilotStatusBar();
+  const statusBar = new gpilotStatusBar();
   context.subscriptions.push({ dispose: () => statusBar.dispose() });
 
-  const sidebar = new gitpilotSidebarProvider(
+  const sidebar = new gpilotSidebarProvider(
     context.extensionUri,
     statusBar,
     context,
   );
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
-      gitpilotSidebarProvider.viewType,
+      gpilotSidebarProvider.viewType,
       sidebar,
     ),
   );
