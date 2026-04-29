@@ -87,6 +87,19 @@ export const extensionMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("modeUpdate"),
     mode: gitpilotModeSchema,
   }),
+  z.object({
+    type: z.literal("specFilePicked"),
+    path: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("specGenerated"),
+    path: z.string().min(1),
+    preview: z.string(),
+  }),
+  z.object({
+    type: z.literal("openDiffsUpdate"),
+    paths: z.array(z.string().min(1)),
+  }),
 ]);
 
 export type ExtensionMessage = z.infer<typeof extensionMessageSchema>;
@@ -111,10 +124,27 @@ export const webviewMessageSchema = z.discriminatedUnion("type", [
     title: z.string().min(1),
     description: z.string().min(1),
   }),
+  z.object({ type: z.literal("pushBranch") }),
   z.object({ type: z.literal("runReview") }),
+  z.object({ type: z.literal("publishReview") }),
+  z.object({ type: z.literal("openPr") }),
+  z.object({
+    type: z.literal("previewFix"),
+    issueId: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("applyFix"),
+    issueId: z.string().min(1),
+  }),
   z.object({ type: z.literal("openWorkingTree") }),
   z.object({
     type: z.literal("openFileDiff"),
+    path: z.string().min(1),
+    staged: z.boolean().default(false),
+    status: z.string().default(""),
+  }),
+  z.object({
+    type: z.literal("closeFileDiff"),
     path: z.string().min(1),
   }),
   z.object({
@@ -128,6 +158,16 @@ export const webviewMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("setMode"),
     mode: gitpilotModeSchema,
+  }),
+  z.object({ type: z.literal("pickSpecFile") }),
+  z.object({
+    type: z.literal("generateSpec"),
+    path: z.string().min(1),
+    sections: z.array(z.string().min(1)),
+  }),
+  z.object({
+    type: z.literal("openSpec"),
+    path: z.string().min(1),
   }),
 ]);
 

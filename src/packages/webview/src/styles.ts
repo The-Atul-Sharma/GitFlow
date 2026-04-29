@@ -1,136 +1,179 @@
 import type { CSSProperties } from "react";
 import type { InlineIssue } from "./types.js";
 
-export const colors = {
-  background: "#101214",
-  surface: "#171a1e",
-  surfaceSoft: "#1c2025",
-  surfaceMuted: "#13161a",
-  border: "rgba(255,255,255,0.12)",
-  borderSoft: "rgba(255,255,255,0.08)",
-  foreground: "#e7eaee",
-  muted: "rgba(231,234,238,0.66)",
-  buttonBackground: "#0a84d6",
-  buttonForeground: "#ffffff",
-  inputBackground: "#20252b",
-  success: "#3fc88f",
-  warningForeground: "#ffd36e",
-  infoForeground: "#6eb7ff",
-  errorForeground: "#ff7c7c",
+/**
+ * Theme tokens are sourced from VS Code's CSS variables so the panel matches
+ * whatever theme the user has applied. The `c.*` aliases expose convenient
+ * names that mirror the design file (bg/surface/border/text/etc.) but resolve
+ * to theme-aware values at render time.
+ */
+export const c = {
+  bg: "transparent",
+  surface: "color-mix(in srgb, var(--vscode-foreground) 5%, transparent)",
+  surface2: "color-mix(in srgb, var(--vscode-foreground) 8%, transparent)",
+  inputBg: "var(--vscode-input-background, color-mix(in srgb, var(--vscode-foreground) 6%, transparent))",
+  border: "color-mix(in srgb, var(--vscode-foreground) 12%, transparent)",
+  border2: "color-mix(in srgb, var(--vscode-foreground) 22%, transparent)",
+  text: "var(--vscode-foreground)",
+  textMuted: "var(--vscode-descriptionForeground, color-mix(in srgb, var(--vscode-foreground) 65%, transparent))",
+  textSubtle: "color-mix(in srgb, var(--vscode-foreground) 40%, transparent)",
+  accent: "#007acc",
+  accentHover: "#0a84d6",
+  accentText: "#ffffff",
+  green: "var(--vscode-testing-iconPassed, var(--vscode-charts-green, #3fc88f))",
+  yellow: "var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #d7ba7d))",
+  orange: "var(--vscode-charts-orange, #ce9178)",
+  red: "var(--vscode-errorForeground, var(--vscode-charts-red, #f48771))",
+  info: "var(--vscode-charts-blue, #6cb8f0)",
 } as const;
+
+export const ui = "var(--vscode-font-family, 'Segoe WPC', 'Segoe UI', sans-serif)";
+export const mono = "var(--vscode-editor-font-family, 'SF Mono', Menlo, Consolas, monospace)";
+
+export const sev = {
+  blocker: { bg: "color-mix(in srgb, var(--vscode-errorForeground, #f47171) 14%, transparent)", color: c.red },
+  warning: { bg: "color-mix(in srgb, var(--vscode-editorWarning-foreground, #d7ba7d) 14%, transparent)", color: c.yellow },
+  info: { bg: "color-mix(in srgb, var(--vscode-charts-blue, #6cb8f0) 18%, transparent)", color: c.info },
+} as const;
+
+export const ACCENT_BLUE = "#007acc" as const;
+
+const baseBtn: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 5,
+  padding: "0 12px",
+  height: 28,
+  borderRadius: 5,
+  fontSize: 11.5,
+  fontWeight: 500,
+  fontFamily: ui,
+  whiteSpace: "nowrap",
+  flexShrink: 0,
+  cursor: "pointer",
+  border: "1px solid transparent",
+  background: c.surface2,
+  color: c.text,
+  boxSizing: "border-box",
+};
 
 export const layout: Record<string, CSSProperties> = {
   page: {
-    background: "transparent",
+    background: c.bg,
+    margin: 0,
     padding: 0,
     minHeight: "100vh",
     boxSizing: "border-box",
   },
-  app: {
-    background: "transparent",
-    color: colors.foreground,
-    fontFamily: "var(--vscode-font-family, sans-serif)",
-    fontSize: 12,
-    padding: 8,
+  shell: {
     display: "flex",
     flexDirection: "column",
-    gap: 12,
-    border: "none",
-    borderRadius: 0,
-    maxWidth: "none",
+    height: "100vh",
     width: "100%",
-    margin: 0,
+    background: c.bg,
+    color: c.text,
+    fontFamily: ui,
+    fontSize: 12,
     boxSizing: "border-box",
-    minHeight: "100vh",
     overflow: "hidden",
   },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 7,
-  },
-  sectionTitle: {
-    textTransform: "uppercase",
-    fontSize: 14,
-    letterSpacing: "0.6px",
-    opacity: 0.85,
-    fontWeight: 700,
-    margin: 0,
-  },
-  card: {
-    border: `1px solid ${colors.borderSoft}`,
-    background: colors.surface,
-    borderRadius: 10,
-    padding: 10,
+  content: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "10px 12px",
     display: "flex",
     flexDirection: "column",
     gap: 8,
   },
-  primaryButton: {
-    background: colors.buttonBackground,
-    color: colors.buttonForeground,
-    border: "1px solid transparent",
-    borderRadius: 7,
-    padding: "7px 10px",
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 600,
+  divider: {
+    height: 1,
+    background: c.border,
+    margin: "2px 0",
   },
-  secondaryButton: {
-    background: colors.surfaceSoft,
-    color: colors.foreground,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 7,
-    padding: "7px 10px",
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 600,
-  },
-  select: {
-    background: colors.inputBackground,
-    color: colors.foreground,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 7,
-    padding: "6px 9px",
-    fontSize: 12,
-    width: "100%",
-  },
-  rowSpread: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  rowGap: {
-    display: 'flex',
-    alignItems: 'center',
+  card: {
+    background: c.surface,
+    border: `1px solid ${c.border}`,
+    borderRadius: 6,
+    padding: "10px 12px",
+    display: "flex",
+    flexDirection: "column",
     gap: 8,
   },
   monospace: {
-    fontFamily: 'var(--vscode-editor-font-family, monospace)',
-    fontSize: 12,
-    opacity: 0.92,
+    fontFamily: mono,
+    fontSize: 11,
   },
 };
 
-const severityColors: Record<InlineIssue['severity'], string> = {
-  blocker: colors.errorForeground,
-  warning: colors.warningForeground,
-  info: colors.infoForeground,
-};
-
-export function severityPill(severity: InlineIssue['severity']): CSSProperties {
-  return {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: "3px 8px",
-    borderRadius: 6,
-    fontSize: 10,
-    fontWeight: 600,
-    textTransform: 'uppercase',
-    letterSpacing: "0.5px",
-    background: severityColors[severity],
-    color: "#101214",
-  };
+export function btnStyle(
+  variant: "default" | "accent" | "ghost" | "subtle" | "green" = "default",
+  full = false,
+  locked = false,
+): CSSProperties {
+  const v: CSSProperties = { ...baseBtn };
+  if (variant === "accent") {
+    v.background = c.accent;
+    v.color = c.accentText;
+    v.borderColor = "transparent";
+  } else if (variant === "ghost") {
+    v.background = "transparent";
+    v.color = c.textMuted;
+    v.borderColor = "transparent";
+  } else if (variant === "subtle") {
+    v.background = "color-mix(in srgb, var(--vscode-foreground) 4%, transparent)";
+    v.color = c.textMuted;
+    v.borderColor = c.border;
+  } else if (variant === "green") {
+    v.background = "color-mix(in srgb, var(--vscode-testing-iconPassed, #3fc88f) 12%, transparent)";
+    v.color = c.green;
+    v.borderColor = "color-mix(in srgb, var(--vscode-testing-iconPassed, #3fc88f) 25%, transparent)";
+  } else {
+    v.borderColor = c.border2;
+  }
+  if (full) v.width = "100%";
+  if (locked) {
+    v.background = "color-mix(in srgb, var(--vscode-foreground) 4%, transparent)";
+    v.color = c.textSubtle;
+    v.borderColor = c.border;
+    v.cursor = "not-allowed";
+  }
+  return v;
 }
 
+export const inputStyle: CSSProperties = {
+  background: c.inputBg,
+  color: "var(--vscode-input-foreground, var(--vscode-foreground))",
+  border: `1px solid ${c.border2}`,
+  borderRadius: 5,
+  padding: "6px 9px",
+  fontSize: 11.5,
+  fontFamily: ui,
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+export const textareaStyle: CSSProperties = {
+  ...inputStyle,
+  fontFamily: mono,
+  lineHeight: 1.6,
+  resize: "vertical",
+  minHeight: 80,
+};
+
+export function severityPillStyle(severity: InlineIssue["severity"]): CSSProperties {
+  const cfg = sev[severity];
+  return {
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: "0.06em",
+    padding: "2px 5px",
+    borderRadius: 3,
+    background: cfg.bg,
+    color: cfg.color,
+    fontFamily: ui,
+    flexShrink: 0,
+    textTransform: "uppercase",
+    display: "inline-block",
+  };
+}

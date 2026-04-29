@@ -1,53 +1,131 @@
 # GitPilot
 
 AI-powered git workflow inside VS Code. Generate commit messages, create
-pull requests with AI descriptions, and run AI code reviews — all from a
-task-oriented sidebar.
+pull requests with AI descriptions, run AI code reviews, and produce
+module specifications — all from a task-oriented sidebar.
 
-The extension shells out to the [`gitpilot`](https://www.npmjs.com/package/gitpilot)
-CLI for every action, so the same flow runs identically in the terminal
-and inside VS Code.
+The sidebar uses a **transparent background** and VS Code theme tokens,
+so it adapts cleanly to any active theme (dark, light, high-contrast).
+Most actions shell out to the [`gitpilot`](https://www.npmjs.com/package/gitpilot)
+CLI; spec generation calls the configured AI provider directly using
+keys read from the OS keychain.
 
-## Features
+## Layout
 
-### Commit flow
+```
+┌─────────────────────────────────────────┐
+│ ● Ready          AI ▢ ▣   Claude … ▾   │  ← Header
+├─────────────────────────────────────────┤
+│ Commit  Pull Request  PR Review  Spec MD│  ← Tabs
+├─────────────────────────────────────────┤
+│                                         │
+│            (active tab content)         │
+│                                         │
+├─────────────────────────────────────────┤
+│ ● Anthropic connected     Manage Keys   │  ← Footer (pinned)
+└─────────────────────────────────────────┘
+```
+
+- **Header** — live status dot, AI on/off toggle, model selector.
+- **Tabs** — four equal-width tabs; the active tab gets a blue
+  underline.
+- **Footer** — provider connection state on the left, **Manage Keys**
+  on the right, always pinned to the bottom of the panel.
+
+When AI is **off**, the tabs and content area are dimmed and a
+"Enable AI Mode" lock banner is shown above them — every CTA is
+non-interactive in this state.
+
+## Tabs
+
+### Commit
 
 - **Generate Commit Message** — runs `gitpilot commit --dry-run` and
   drops the suggested Conventional Commit message into an editable
   textarea.
-- Edit freely, then click **Commit** to run `git commit -m "<edited>"`.
-  The extension never auto-commits the AI draft.
+- **Commit** — runs `git commit -m "<edited>"`. The extension never
+  auto-commits the AI draft.
+- **Staged** / **Changes** sections below the CTA, each collapsible.
+  - Rows render like VS Code's SCM view: filename in the primary
+    color followed by the dim parent directory that truncates from the
+    start (preserving the leaf folder) when the row is too narrow.
+  - The checkbox on each row toggles **stage / unstage**.
+  - Clicking the row opens the matching diff:
+    - **Staged** rows → HEAD ↔ index (`git diff --staged`), opened via
+      `vscode.diff` with `git:` URIs on both sides.
+    - **Changes** rows → HEAD ↔ working tree, opened via
+      `vscode.diff` with a `git:` URI on the left and the file URI on
+      the right.
+  - Each diff is pinned with `workbench.action.keepEditor` so multiple
+    diffs can stay open at once.
+  - Clicking the same row again closes that specific diff via
+    `vscode.window.tabGroups.close(tab)`.
+  - Closing a diff tab in the editor — staged or working — fires
+    `tabGroups.onDidChangeTabs`, which clears the row's blue highlight
+    in the panel.
 
-### Pull Request flow
+### Pull Request
 
-When the current branch has at least one commit but no open PR, the
-sidebar shows the PR panel:
+When the current branch isn't pushed yet:
 
-- Branch name and push state pulled from `gitpilot status --json`.
+- Branch name + "not pushed" pill.
+- **Push Branch** CTA runs `git push -u origin HEAD`.
+
+After push:
+
 - **Generate PR title + description** — runs
   `gitpilot pr create --dry-run` and fills two editable fields.
-- **Create PR** — pushes the branch and opens the PR (uses `gh`).
+- **Create PR** — opens the PR via `gh pr create`.
 
-### Code Review
+### PR Review
 
-When the current branch has an open PR, the sidebar swaps the PR panel
-for a review panel:
+Header row matches the Commit and Pull Request tabs —
+`⎇ <branch-name> [PR open]  ↗` — the `↗` opens the PR in the browser
+via `gh pr view --web`.
 
-- **Generate Code Review** — runs `gitpilot review --json`.
-- Each issue is rendered with severity (blocker / warning / info), file
-  - line, comment text, and the optional suggested fix. No empty-state
-    card is rendered when there are zero issues.
+Toggle between **Manual** and **Auto** modes:
 
-### Mode toggle
+- **Manual** — `Generate Review` produces a list of issues. Each card
+  shows severity (blocker / warning / info), the comment text, and a
+  `file:line` reference. **Preview Fix** opens the AI's proposed change
+  before applying. **Publish Review →** posts all comments to the
+  remote.
+- **Auto** — `Generate & Publish Review` runs the review and publishes
+  in one step, no preview.
 
-Switch the sidebar between **Gitpilot (AI)** and **Native Git** at any
-time. In Native Git the AI generation buttons are hidden and you fill
-the commit message / PR title manually before submitting. The mode is
-persisted across sessions.
+### Spec MD
 
-### Model switcher
+Generate a module specification for any file in the repo:
 
-Pick the active provider + model from a dropdown. Supports:
+1. Pick a file via VS Code's Quick Pick (the picker truncates long
+   paths and shows the full path on hover).
+2. Choose which sections to include — all four (Purpose, API Surface,
+   Usage, Edge cases & errors) are checked by default.
+3. Click **Generate spec.md** to produce `<basename>.spec.md` next to
+   the source file.
+4. The generated file appears inline with an **Open ↗** button.
+
+Spec generation calls your configured AI provider directly:
+
+- **Anthropic** — `https://api.anthropic.com/v1/messages`
+- **OpenAI** — `https://api.openai.com/v1/chat/completions`
+- **Gemini** — `https://generativelanguage.googleapis.com/v1beta`
+- **Ollama** — `http://localhost:11434/api/generate`
+
+If no key is configured, a deterministic structural parse runs as a
+fallback so spec generation never silently fails.
+
+## AI mode toggle
+
+The header has an AI on/off toggle:
+
+- **On** — the four tabs are interactive, AI generation is available.
+- **Off** — every tab and CTA is locked behind a dim overlay with a
+  "Enable AI Mode" banner. The mode is persisted across sessions.
+
+## Model switcher
+
+Pick the active provider + model from the header dropdown. Supports:
 
 - Claude (Sonnet 4.6, Opus 4.7)
 - GPT-4o
@@ -55,14 +133,29 @@ Pick the active provider + model from a dropdown. Supports:
 - Any local Ollama model auto-discovered at
   `http://localhost:11434/api/tags`
 
-The selection is written into `gitpilot.config.yml`.
+The selection is written into `gitpilot.config.yml`. The dropdown is
+width-capped and truncates long labels; the full label is shown on
+hover.
 
-### API key management
+## Live Ollama health
 
-- **Manage API Keys** opens a quick-pick that writes secrets to the OS
-  keychain via `keytar` (no `.env` files, no plaintext).
-- A first-launch prompt asks for at least one AI key and one platform
-  token before the panel becomes interactive.
+When the active provider is Ollama, the extension polls
+`http://localhost:11434/api/tags` and updates the footer accordingly:
+
+- **Ollama (local) running** — daemon is reachable.
+- **Ollama not running** — daemon is down or unreachable.
+
+Status refreshes every ~2.5 seconds while the panel is open, plus
+immediately whenever the panel becomes visible.
+
+## API key management
+
+- **Manage Keys** in the footer (and the **Configure** button on the
+  setup screen) opens a quick-pick that writes secrets to the OS
+  keychain via `keytar`. No `.env` files, no plaintext, no VS Code
+  SecretStorage.
+- The setup screen is shown until at least one AI key (skip if using
+  Ollama) and one platform token are saved.
 
 ## Commands
 
@@ -77,13 +170,13 @@ The selection is written into `gitpilot.config.yml`.
 | `gitpilot: Setup or update API keys`         | Opens the keychain manager                    |
 | `gitpilot: Show panel`                       | Focuses the sidebar                           |
 | `gitpilot: Show status`                      | Runs `gitpilot status` in a terminal          |
-| `gitpilot: Toggle between AI and Native Git` | Flips the sidebar mode                        |
+| `gitpilot: Toggle between AI and Native Git` | Flips the AI toggle from the palette          |
 
 ## Settings
 
 | Setting                | Default        | Description                                     |
 | ---------------------- | -------------- | ----------------------------------------------- |
-| `gitpilot.defaultMode` | `gitpilot`     | `"gitpilot"` (AI) or `"native"` (manual)        |
+| `gitpilot.defaultMode` | `gitpilot`     | `"gitpilot"` (AI on) or `"native"` (AI off)     |
 | `gitpilot.cliCommand`  | `npx gitpilot` | Override if `gitpilot` is installed differently |
 
 ## Requirements
@@ -125,16 +218,29 @@ review:
 
 ## How it works
 
-The extension host **never** imports CLI modules directly. Every action
-either:
+The extension host **never** imports CLI modules directly. Each user
+action follows one of three paths:
 
-1. **Captures stdout** from a one-shot `npx gitpilot … --dry-run` /
-   `--json` invocation when the sidebar needs structured data, or
-2. **Spawns a terminal** when the user should see streaming output or
-   answer prompts (palette commands, fix flows, `gh pr create`).
+1. **One-shot stdout capture** — `npx gitpilot … --dry-run` /
+   `--json` for commit, PR draft, review, and status. The extension
+   hydrates `process.env` from the keychain before invoking, so the
+   CLI sees `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY`
+   / `GITHUB_TOKEN` etc. without any additional setup.
+2. **Direct AI call** — Spec MD generation calls the configured
+   provider's HTTP API directly, with a structural fallback when no
+   key is available.
+3. **Terminal spawn** — when the user should see streaming output or
+   answer prompts (palette commands, fix flows, `gh pr create`,
+   `git push`).
 
-Mode and first-launch state live in `context.globalState`. Secrets live
-in the OS keychain. Model selection lives in `gitpilot.config.yml`.
+State storage:
+
+- **Mode** (AI on/off) and **first-launch** flag — `context.globalState`
+- **Secrets** — OS keychain via `keytar` (service: `gitpilot`)
+- **Model selection** — `gitpilot.config.yml`
+- **Open diff tabs** — tracked via
+  `vscode.window.tabGroups.onDidChangeTabs` so the file-row highlight
+  in the panel stays in sync with VS Code's editor state.
 
 ## License
 

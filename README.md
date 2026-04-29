@@ -8,7 +8,7 @@
 
 AI-powered **Git workflow automation CLI and VS Code extension**.
 
-> Generate commits → create pull requests → review code → fix issues — all in one flow.
+> Generate commits → create pull requests → review code → fix issues → write specs — all in one flow.
 
 ---
 
@@ -37,65 +37,77 @@ AI-powered **Git workflow automation CLI and VS Code extension**.
 
 ### 🧩 VS Code Extension
 
-A clean, task-focused sidebar for your Git workflow.
+A clean, task-focused sidebar with **four tabs** and a transparent
+background that adapts to any VS Code theme (dark, light, high-contrast).
 
-#### ✍️ Commit Flow
+#### 🧭 Header
 
-- Generate commit messages using AI
-- Edit before committing
-- Commit using your final message
+- Live status indicator (`Ready` / `Running…` / `Setup required` / `Error`)
+- **AI on/off toggle** — flip AI mode on or off without leaving the panel.
+  When AI is off, every tab and CTA is locked behind an overlay.
+- **Model selector** — switch between Claude, GPT-4o, Gemini, or any
+  locally installed Ollama model. Selection is written to
+  `gitpilot.config.yml`.
 
----
+#### 🛠️ Setup Screen
 
-#### 🔀 Pull Request Flow
+When credentials are missing, the panel shows a checklist of what's
+needed (AI provider key, platform token) and a single **Configure**
+button. Configure walks you through saving each key to your **system
+keychain** via VS Code prompts — no `.env` files, no plaintext storage.
 
-- Automatically detects repository state
+#### ✍️ Commit Tab
 
-**If branch is not pushed:**
+- One-click **Generate Commit Message** (Conventional Commits format)
+- Editable textarea with the generated draft
+- Full-width **Commit** CTA
+- Collapsible **Staged** / **Changes** sections under the CTA
+- Each row renders like VS Code's SCM view: `filename.ts` in the
+  primary color followed by a dim parent directory that truncates from
+  the start when there isn't room
+- Checkbox on each row stages / unstages the file
+- Click a row to open the matching diff in VS Code:
+  - **Staged** rows open the HEAD ↔ index diff (`git diff --staged`)
+  - **Changes** rows open the HEAD ↔ working tree diff
+- Click the same row again to close that diff. Closing the tab from
+  the editor clears the row's highlight automatically.
+- Multiple file diffs can stay open simultaneously
 
-- Generate PR title and description
-- Edit before creating PR
-- Push + create PR in one step
+#### 🔀 Pull Request Tab
 
-**If PR already exists:**
+- Branch name + push state pill
+- **Push Branch** CTA when the branch hasn't been pushed yet
+- After push: **Generate PR Title + Description**, edit, then
+  **Create PR**
 
-- Skip creation and go to review
+#### 🔍 PR Review Tab
 
----
+- Header mirrors the Commit / PR tab: `⎇ branch-name [PR open] ↗`
+  with a click-through to open the PR in the browser
+- **Manual mode** — generate review, preview each comment, edit before
+  publishing
+- **Auto mode** — generate and publish in one click
+- Comments tagged with severity (🚫 blocker / ⚠️ warning / ℹ️ info),
+  with file:line references
+- Per-issue **Preview Fix** to inspect the proposed change before
+  applying
 
-#### 🔍 Code Review
+#### 📄 Spec MD Tab
 
-- Generate AI-powered reviews
-- Structured output:
-  - 🚫 Blocker
-  - ⚠️ Warning
-  - ℹ️ Info
-- Includes file and line references when available
+A new tab for generating module specifications:
 
----
+- Pick any file from the repo via VS Code's Quick Pick
+- Choose which sections to include (Purpose, API Surface, Usage,
+  Edge cases & errors)
+- Generates `<basename>.spec.md` next to the source file using your
+  configured AI provider (with a structural fallback if no AI key is
+  configured)
 
-#### 🔁 Mode Toggle
+#### 🤖 Live Ollama Detection
 
-Switch between:
-
-- 🤖 **Gitpilot (AI-powered)**
-- 🧑‍💻 **Native Git**
-
----
-
-#### 🤖 Model Switcher
-
-- Claude, GPT, Gemini, or local Ollama models
-- Automatically updates `gitpilot.config.yml`
-
----
-
-#### 🔑 Key Management
-
-- Manage API keys from within VS Code
-- Secure storage via OS keychain
-
----
+If you switch to an Ollama model and the local server stops, the
+footer flips to "Ollama not running" within ~2.5s — no manual refresh
+needed.
 
 #### 🧭 Commands
 
@@ -120,7 +132,7 @@ Switch between:
 
 ## 🧠 How It Works
 
-The VS Code extension runs all actions via:
+The VS Code extension runs commit / PR / review actions via:
 
 ```bash
 gitpilot ...
@@ -131,6 +143,9 @@ This ensures:
 - Consistent CLI + extension behavior
 - No duplicated logic
 - Easier maintenance
+
+Spec generation calls the configured AI provider directly (Anthropic /
+OpenAI / Gemini / Ollama) using keys read from the OS keychain.
 
 ---
 
@@ -174,20 +189,24 @@ Install from **VS Code Marketplace**:
 ```bash
 ANTHROPIC_API_KEY=
 OPENAI_API_KEY=
+GEMINI_API_KEY=
 GITHUB_TOKEN=
 AZURE_DEVOPS_PAT=
 AZURE_DEVOPS_ORG=
 AZURE_DEVOPS_PROJECT=
+GITLAB_TOKEN=
 ```
 
 ---
 
 ### 🔐 Secure Storage
 
-API keys can be stored in OS keychain:
+API keys are stored in your **OS keychain** (macOS Keychain, Windows
+Credential Manager, libsecret on Linux) via `keytar`:
 
 - Used during extension onboarding
-- Managed via: `gitpilot: Setup or update API keys`
+- Managed via: `gitpilot: Setup or update API keys` or the **Manage
+  Keys** button in the panel footer
 
 ---
 
@@ -223,11 +242,15 @@ gitpilot status
 
 ### VS Code Extension
 
-1. Open **gitpilot panel**
-2. Generate and edit commit message
-3. Commit changes
-4. Create PR (if applicable)
-5. Run AI review
+1. Click the **gitpilot** icon in the activity bar
+2. If credentials are missing, click **Configure** to save them to your
+   system keychain
+3. Use the four tabs:
+   - **Commit** — generate a message, stage files, commit
+   - **Pull Request** — push branch, generate title/description,
+     create PR
+   - **PR Review** — generate review (manual or auto), publish to remote
+   - **Spec MD** — pick a file, generate a spec.md next to it
 
 ---
 
@@ -240,8 +263,8 @@ src/
   modules/      commit, PR, review, fix
   platforms/    Git providers
   packages/
-    extension/  VS Code extension
-    webview/    React UI
+    extension/  VS Code extension host
+    webview/    React UI for the sidebar (transparent, theme-aware)
 ```
 
 ---
@@ -254,7 +277,8 @@ To package and install the VS Code extension locally:
 
 ```bash
 cd src/packages/extension
-npx @vscode/vsce package # produces gitpilot-<version>.vsix
+npm run build                    # builds webview + extension
+npx @vscode/vsce package         # produces gitpilot-<version>.vsix
 code --install-extension gitpilot-1.0.0.vsix
 ```
 
@@ -287,7 +311,9 @@ npm link
 
 ## 🔍 Keywords
 
-AI git workflow, commit message generator, AI PR generator, AI code review, git automation CLI, VS Code git assistant, developer productivity
+AI git workflow, commit message generator, AI PR generator, AI code
+review, spec.md generator, git automation CLI, VS Code git assistant,
+developer productivity
 
 ---
 

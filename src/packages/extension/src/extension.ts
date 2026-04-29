@@ -52,13 +52,22 @@ export interface ExtensionMessageFromWebview {
     | "commitMessage"
     | "generatePr"
     | "createPr"
+    | "pushBranch"
     | "runReview"
+    | "publishReview"
+    | "openPr"
+    | "previewFix"
+    | "applyFix"
     | "openWorkingTree"
     | "openFileDiff"
+    | "closeFileDiff"
     | "stageFile"
     | "unstageFile"
     | "setMode"
-    | "refreshStatus";
+    | "refreshStatus"
+    | "pickSpecFile"
+    | "generateSpec"
+    | "openSpec";
   provider?: string;
   model?: string;
   message?: string;
@@ -66,6 +75,10 @@ export interface ExtensionMessageFromWebview {
   description?: string;
   mode?: gitpilotMode;
   path?: string;
+  issueId?: string;
+  sections?: string[];
+  staged?: boolean;
+  status?: string;
 }
 
 export interface ExtensionMessageToWebview {
@@ -80,7 +93,10 @@ export interface ExtensionMessageToWebview {
     | "prDraft"
     | "reviewResult"
     | "repoStatus"
-    | "modeUpdate";
+    | "modeUpdate"
+    | "specFilePicked"
+    | "specGenerated"
+    | "openDiffsUpdate";
   provider?: string;
   model?: string;
   models?: Array<{ label: string; provider: string; model: string }>;
@@ -95,6 +111,9 @@ export interface ExtensionMessageToWebview {
   issues?: ReviewIssue[];
   status?: RepoStatus;
   mode?: gitpilotMode;
+  path?: string;
+  preview?: string;
+  paths?: string[];
 }
 
 export class ExtensionError extends Error {
@@ -197,6 +216,30 @@ interface OllamaTagsResponse {
 }
 
 const OLLAMA_TAGS_ENDPOINT = "http://localhost:11434/api/tags";
+
+async function isOllamaReachable(): Promise<boolean> {
+  // Race fetch against an explicit timeout. Some failure modes (DNS hang,
+  // half-open socket) don't trigger AbortController fast enough on their own,
+  // which would leave the footer stuck on "Ollama running" after the daemon dies.
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    const finish = (value: boolean): void => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const timer = setTimeout(() => finish(false), 1000);
+    fetch(OLLAMA_TAGS_ENDPOINT)
+      .then((response) => {
+        clearTimeout(timer);
+        finish(response.ok);
+      })
+      .catch(() => {
+        clearTimeout(timer);
+        finish(false);
+      });
+  });
+}
 
 async function fetchLocalOllamaModelOptions(): Promise<ModelOption[]> {
   try {
@@ -433,12 +476,38 @@ async function execgitpilot(args: string[]): Promise<string> {
       "Open a workspace folder before running gitpilot commands.",
     );
   }
-  const { stdout } = await execFileAsync("npx", ["gitpilot", ...args], {
-    cwd: root,
-    maxBuffer: 50 * 1024 * 1024,
-    env: process.env,
-  });
-  return stdout;
+  const env = { ...process.env };
+  for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GITHUB_TOKEN", "AZURE_DEVOPS_PAT", "GITLAB_TOKEN"] as const) {
+    if (!env[key]) {
+      const fromKeychain = await readSecret(key);
+      if (fromKeychain) env[key] = fromKeychain;
+    }
+  }
+  try {
+    const { stdout, stderr } = await execFileAsync("npx", ["gitpilot", ...args], {
+      cwd: root,
+      maxBuffer: 50 * 1024 * 1024,
+      env,
+    });
+    if (!stdout.trim()) {
+      throw new ExtensionError(
+        `gitpilot ${args.join(" ")} returned no output. ${stderr.trim() || "Check that the gitpilot CLI is installed and the AI provider key is configured."}`,
+      );
+    }
+    return stdout;
+  } catch (error) {
+    if (error instanceof ExtensionError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new ExtensionError(
+      `gitpilot ${args.join(" ")} failed: ${message}. Verify the CLI is installed (npx gitpilot --version) and your API keys are saved via Manage Keys.`,
+    );
+  }
+}
+
+async function readSecret(key: SecretKey): Promise<string | null> {
+  const keytar = await loadKeytar();
+  if (!keytar) return null;
+  return keytar.getPassword(SECRETS_SERVICE_NAME, key);
 }
 
 function findOrCreateTerminal(): vscode.Terminal {
@@ -472,19 +541,122 @@ function workspaceFileUri(path: string): vscode.Uri {
   return vscode.Uri.file(join(root, path));
 }
 
-async function openFileDiff(path: string): Promise<void> {
+function gitUriForRef(path: string, ref: "HEAD" | "~"): vscode.Uri {
+  // The git extension exposes file contents at a ref via the `git:` scheme.
+  // Encoding matches what the built-in git extension emits internally.
+  const fileUri = workspaceFileUri(path);
+  return fileUri.with({
+    scheme: "git",
+    query: JSON.stringify({ path: fileUri.fsPath, ref }),
+  });
+}
+
+interface FileChangeShape {
+  isUntracked: boolean;   // ??
+  addedAtIndex: boolean;  // first char A
+  addedAtWorktree: boolean; // second char A
+  deletedAtIndex: boolean;  // first char D
+  deletedAtWorktree: boolean; // second char D
+  renamedAtIndex: boolean;  // first char R
+}
+
+function shapeFromStatus(status: string): FileChangeShape {
+  const trimmed = status ?? "";
+  const indexChar = trimmed[0] ?? " ";
+  const worktreeChar = trimmed[1] ?? " ";
+  const isUntracked = trimmed === "??" || trimmed === "?";
+  return {
+    isUntracked,
+    addedAtIndex: indexChar === "A",
+    addedAtWorktree: worktreeChar === "A" || isUntracked,
+    deletedAtIndex: indexChar === "D",
+    deletedAtWorktree: worktreeChar === "D",
+    renamedAtIndex: indexChar === "R",
+  };
+}
+
+async function openSingleFile(uri: vscode.Uri): Promise<void> {
+  const doc = await vscode.workspace.openTextDocument(uri);
+  await vscode.window.showTextDocument(doc, { preview: false });
+}
+
+async function openFileDiff(
+  path: string,
+  staged: boolean,
+  status: string,
+): Promise<void> {
   if (!path || !path.trim()) {
     throw new ExtensionError("openFileDiff requires a file path.");
   }
   const fileUri = workspaceFileUri(path);
+  const fileName = path.split(/[\\/]/).pop() ?? path;
+  const shape = shapeFromStatus(status);
+  let opened = false;
+
+  // Pick the right open strategy based on the file's actual change shape.
+  // `vscode.diff` fails with "file not found" if either side doesn't exist
+  // at the requested ref, so for new / deleted files we either skip the
+  // diff or substitute an empty buffer.
   try {
-    await vscode.commands.executeCommand("git.viewChanges", fileUri);
+    if (staged) {
+      if (shape.addedAtIndex || shape.renamedAtIndex) {
+        // Newly added (or renamed) at index — no HEAD version exists. Just
+        // open the indexed copy as a normal document.
+        await openSingleFile(gitUriForRef(path, "~"));
+      } else if (shape.deletedAtIndex) {
+        // Deleted at index — show what was there at HEAD.
+        await openSingleFile(gitUriForRef(path, "HEAD"));
+      } else {
+        // Modified at index — HEAD ↔ index diff.
+        await vscode.commands.executeCommand(
+          "vscode.diff",
+          gitUriForRef(path, "HEAD"),
+          gitUriForRef(path, "~"),
+          `${fileName} (Index)`,
+          { preview: false },
+        );
+      }
+    } else {
+      if (shape.isUntracked) {
+        // Untracked — no git version of this file at all. Open it directly.
+        await openSingleFile(fileUri);
+      } else if (shape.addedAtWorktree && !shape.addedAtIndex) {
+        // Added but not yet indexed — same situation, open directly.
+        await openSingleFile(fileUri);
+      } else if (shape.deletedAtWorktree) {
+        // Deleted in working tree — show what HEAD had.
+        await openSingleFile(gitUriForRef(path, "HEAD"));
+      } else {
+        // Modified in working tree — HEAD ↔ working diff.
+        await vscode.commands.executeCommand(
+          "vscode.diff",
+          gitUriForRef(path, "HEAD"),
+          fileUri,
+          `${fileName} (Working Tree)`,
+          { preview: false },
+        );
+      }
+    }
+    opened = true;
   } catch {
+    // Last-ditch fallback: try to open the working file. If even that
+    // fails, surface the original error to the panel banner.
     try {
-      await vscode.commands.executeCommand("git.openChange", fileUri);
+      await openSingleFile(fileUri);
+      opened = true;
+    } catch (innerError) {
+      throw new ExtensionError(
+        `Could not open ${path}: ${innerError instanceof Error ? innerError.message : String(innerError)}`,
+      );
+    }
+  }
+  if (opened) {
+    try {
+      // Pin the editor so subsequent clicks open new tabs instead of
+      // replacing a preview tab.
+      await vscode.commands.executeCommand("workbench.action.keepEditor");
     } catch {
-      const doc = await vscode.workspace.openTextDocument(fileUri);
-      await vscode.window.showTextDocument(doc, { preview: false });
+      /* keepEditor isn't always available; non-fatal. */
     }
   }
 }
@@ -501,6 +673,374 @@ async function stageFile(path: string): Promise<void> {
     cwd: root,
     maxBuffer: 50 * 1024 * 1024,
   });
+}
+
+async function pickRepoFile(): Promise<string | null> {
+  const root = workspaceRoot();
+  if (!root) {
+    throw new ExtensionError("Open a workspace folder before picking a file.");
+  }
+  const items = await vscode.workspace.findFiles(
+    "**/*",
+    "{**/node_modules/**,**/.git/**,**/dist/**,**/out/**}",
+    1000,
+  );
+  if (items.length === 0) {
+    await vscode.window.showInformationMessage("gitpilot: No files found in workspace.");
+    return null;
+  }
+  const picks: vscode.QuickPickItem[] = items.map((uri) => ({
+    label: vscode.workspace.asRelativePath(uri),
+  }));
+  const picked = await vscode.window.showQuickPick(picks, {
+    placeHolder: "Pick a file to generate spec.md for",
+    matchOnDescription: true,
+  });
+  return picked?.label ?? null;
+}
+
+interface ParsedExport {
+  signature: string;
+  doc: string | null;
+  kind: "function" | "class" | "const" | "interface" | "type" | "enum";
+  name: string;
+}
+
+function parseExports(source: string): ParsedExport[] {
+  const lines = source.split("\n");
+  const exports: ParsedExport[] = [];
+  let pendingDoc: string | null = null;
+  let pendingDocLines: string[] = [];
+  let inDoc = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const trimmed = line.trim();
+    if (inDoc) {
+      pendingDocLines.push(trimmed.replace(/^\* ?/, "").replace(/^\*\/$/, ""));
+      if (trimmed.endsWith("*/")) {
+        inDoc = false;
+        pendingDoc = pendingDocLines
+          .filter((l) => l !== "*" && l !== "")
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .replace(/\*\/$/, "")
+          .trim();
+        pendingDocLines = [];
+      }
+      continue;
+    }
+    if (trimmed.startsWith("/**")) {
+      inDoc = !trimmed.endsWith("*/");
+      pendingDocLines = [trimmed.replace(/^\/\*\*\s?/, "").replace(/\*\/$/, "").trim()];
+      if (!inDoc) {
+        pendingDoc = pendingDocLines.join(" ").trim();
+        pendingDocLines = [];
+      }
+      continue;
+    }
+    const exportMatch = line.match(
+      /^\s*export\s+(?:default\s+)?(?:async\s+)?(function|class|const|let|interface|type|enum)\s+([A-Za-z0-9_$]+)/,
+    );
+    if (exportMatch) {
+      const kind = exportMatch[1] as ParsedExport["kind"];
+      const name = exportMatch[2] ?? "";
+      let signature = trimmed.replace(/\{.*$/, "").replace(/=>.*$/, "").trim();
+      if (kind === "interface" || kind === "type" || kind === "enum") {
+        signature = `${kind} ${name}`;
+      }
+      exports.push({ signature, doc: pendingDoc, kind, name });
+      pendingDoc = null;
+    } else if (trimmed && !trimmed.startsWith("//") && !trimmed.startsWith("import")) {
+      pendingDoc = null;
+    }
+  }
+  return exports;
+}
+
+function summarizeFile(source: string, fileName: string): string {
+  const banner = source
+    .split("\n")
+    .slice(0, 30)
+    .map((l) => l.trim())
+    .find((l) => l.startsWith("/**") || l.startsWith("//"));
+  if (banner) {
+    return banner.replace(/^\/\*\*?|^\/\/|\*\/$/g, "").trim();
+  }
+  const exports = parseExports(source);
+  if (exports.length === 0) {
+    return `Internal module (\`${fileName}\`) with no exported surface.`;
+  }
+  const kinds = new Set(exports.map((e) => e.kind));
+  const kindList = Array.from(kinds).join(", ");
+  return `Module \`${fileName}\` exports ${exports.length} symbol${exports.length === 1 ? "" : "s"} (${kindList}).`;
+}
+
+function inferUsage(exports: ParsedExport[], baseName: string): string {
+  if (exports.length === 0) return "";
+  const importNames = exports
+    .filter((e) => e.kind !== "type" && e.kind !== "interface")
+    .slice(0, 3)
+    .map((e) => e.name);
+  const typeImports = exports
+    .filter((e) => e.kind === "type" || e.kind === "interface")
+    .slice(0, 2)
+    .map((e) => e.name);
+  const importLine =
+    importNames.length > 0
+      ? `import { ${importNames.join(", ")} } from "./${baseName.split("/").pop() ?? baseName}";`
+      : `import "./${baseName.split("/").pop() ?? baseName}";`;
+  const typeLine =
+    typeImports.length > 0
+      ? `import type { ${typeImports.join(", ")} } from "./${baseName.split("/").pop() ?? baseName}";`
+      : "";
+  return [importLine, typeLine].filter(Boolean).join("\n");
+}
+
+function inferEdges(source: string, exports: ParsedExport[]): string {
+  const errorNames = Array.from(
+    source.matchAll(/throw\s+new\s+([A-Za-z0-9_]+Error)\s*\(/g),
+  ).map((m) => m[1] ?? "");
+  const uniqueErrors = Array.from(new Set(errorNames));
+  const asyncCount = exports.filter((e) => /\basync\b/.test(e.signature)).length;
+  const lines: string[] = [];
+  if (uniqueErrors.length > 0) {
+    lines.push(`Throws: ${uniqueErrors.map((n) => `\`${n}\``).join(", ")}.`);
+  }
+  if (asyncCount > 0) {
+    lines.push(
+      `Async surface: ${asyncCount} of ${exports.length} exports return Promises — callers must await and handle rejection.`,
+    );
+  }
+  const guardCount = (source.match(/^\s*(?:if|switch)\s*\(/gm) ?? []).length;
+  if (guardCount > 0) {
+    lines.push(`Contains ${guardCount} guard branch${guardCount === 1 ? "" : "es"} for input validation and control flow.`);
+  }
+  if (lines.length === 0) {
+    return "No explicit error throws or async boundaries detected — failures propagate from upstream calls.";
+  }
+  return lines.map((l) => `- ${l}`).join("\n");
+}
+
+interface AICallResult {
+  text: string;
+  source: "anthropic" | "openai" | "gemini" | "ollama";
+}
+
+async function callConfiguredAi(prompt: string): Promise<AICallResult | null> {
+  const root = workspaceRoot();
+  if (!root) return null;
+  const current = await readCurrentModel(root);
+  const provider = current?.provider ?? "claude";
+  const model = current?.model ?? "claude-sonnet-4-6";
+  try {
+    if (provider === "claude") {
+      const key = await readSecret("ANTHROPIC_API_KEY");
+      if (!key) return null;
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 2048,
+          messages: [{ role: "user", content: prompt }],
+        }),
+      });
+      if (!response.ok) {
+        throw new ExtensionError(`Anthropic API error ${response.status}: ${await response.text()}`);
+      }
+      const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+      const text = (data.content ?? [])
+        .filter((block) => block.type === "text")
+        .map((block) => block.text ?? "")
+        .join("");
+      return { text, source: "anthropic" };
+    }
+    if (provider === "openai") {
+      const key = await readSecret("OPENAI_API_KEY");
+      if (!key) return null;
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 2048,
+        }),
+      });
+      if (!response.ok) {
+        throw new ExtensionError(`OpenAI API error ${response.status}: ${await response.text()}`);
+      }
+      const data = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      const text = data.choices?.[0]?.message?.content ?? "";
+      return { text, source: "openai" };
+    }
+    if (provider === "gemini") {
+      const key = await readSecret("GEMINI_API_KEY");
+      if (!key) return null;
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+          }),
+        },
+      );
+      if (!response.ok) {
+        throw new ExtensionError(`Gemini API error ${response.status}: ${await response.text()}`);
+      }
+      const data = (await response.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+      const text =
+        data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+      return { text, source: "gemini" };
+    }
+    if (provider === "ollama") {
+      const response = await fetch("http://localhost:11434/api/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model, prompt, stream: false }),
+      });
+      if (!response.ok) {
+        throw new ExtensionError(`Ollama API error ${response.status}: ${await response.text()}`);
+      }
+      const data = (await response.json()) as { response?: string };
+      return { text: data.response ?? "", source: "ollama" };
+    }
+  } catch (error) {
+    if (error instanceof ExtensionError) throw error;
+    throw new ExtensionError(
+      `AI call failed for provider "${provider}": ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return null;
+}
+
+function buildSpecPrompt(
+  fileName: string,
+  relativePath: string,
+  source: string,
+  sections: string[],
+  exports: ParsedExport[],
+): string {
+  const wantsPurpose = sections.includes("purpose");
+  const wantsApi = sections.includes("api");
+  const wantsUsage = sections.includes("usage");
+  const wantsEdges = sections.includes("edges");
+  const exportSummary =
+    exports.length === 0
+      ? "(no top-level exports detected)"
+      : exports.map((e) => `- ${e.kind} ${e.name}`).join("\n");
+  return [
+    `You are writing a precise specification document for a single source file.`,
+    `Use Markdown. Do not invent behavior the source does not show. Do not add TODO placeholders.`,
+    `Read the source carefully and describe what is actually there.`,
+    ``,
+    `File: ${relativePath}`,
+    ``,
+    `Detected exports:`,
+    exportSummary,
+    ``,
+    `Required sections (omit any not listed):`,
+    wantsPurpose ? `- ## Purpose — what this file is responsible for, in 2-4 sentences.` : "",
+    wantsApi
+      ? `- ## API Surface — for each export: a level-3 heading with backticks around the name, then a short description of what it does and (for functions) its parameters and return type. Include a ts code fence with the signature.`
+      : "",
+    wantsUsage
+      ? `- ## Usage — a small ts code fence showing a realistic call site using the actual export names.`
+      : "",
+    wantsEdges
+      ? `- ## Edge cases & errors — list the failure modes you can see in the code (thrown errors, validation, async rejection, etc.). Be specific to this file.`
+      : "",
+    ``,
+    `Begin the document with a level-1 heading: \`# ${fileName}\`.`,
+    `Then a one-line italic blockquote summary on the next line.`,
+    ``,
+    `Source code:`,
+    "```",
+    source,
+    "```",
+    ``,
+    `Return only the Markdown document — no preface, no code fence around the whole thing.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildHeuristicSpec(
+  fileName: string,
+  relativePath: string,
+  source: string,
+  sections: string[],
+  exports: ParsedExport[],
+): string {
+  const lineCount = source.split("\n").length;
+  const lines: string[] = [`# ${fileName}`, ""];
+  lines.push(`> ${summarizeFile(source, fileName)}`, "");
+  lines.push(`Source: \`${relativePath}\` (${lineCount} lines, ${exports.length} exports)`, "");
+  if (sections.includes("purpose")) {
+    lines.push("## Purpose", "", summarizeFile(source, fileName), "");
+  }
+  if (sections.includes("api")) {
+    lines.push("## API Surface", "");
+    if (exports.length === 0) {
+      lines.push(`_No top-level exports in \`${relativePath}\`._`, "");
+    } else {
+      for (const ex of exports) {
+        lines.push(`### \`${ex.name}\``, "");
+        if (ex.doc) lines.push(ex.doc, "");
+        lines.push("```ts", ex.signature, "```", "");
+      }
+    }
+  }
+  if (sections.includes("usage")) {
+    const baseName = relativePath.replace(/\.[^./]+$/, "");
+    const usage = inferUsage(exports, baseName);
+    lines.push("## Usage", "");
+    if (usage) lines.push("```ts", usage, "```", "");
+    else lines.push("Imported for side effects only.", "");
+  }
+  if (sections.includes("edges")) {
+    lines.push("## Edge cases & errors", "", inferEdges(source, exports), "");
+  }
+  return lines.join("\n");
+}
+
+async function generateSpecForFile(
+  relativePath: string,
+  sections: string[],
+): Promise<{ path: string; preview: string }> {
+  const root = workspaceRoot();
+  if (!root) {
+    throw new ExtensionError("Open a workspace folder before generating a spec.");
+  }
+  const sourceUri = workspaceFileUri(relativePath);
+  const sourceContents = await readFile(sourceUri.fsPath, "utf8");
+  const baseName = relativePath.replace(/\.[^./]+$/, "");
+  const specRelative = `${baseName}.spec.md`;
+  const specUri = workspaceFileUri(specRelative);
+  const fileName = relativePath.split("/").pop() ?? relativePath;
+  const exports = parseExports(sourceContents);
+
+  let body: string;
+  const aiResult = await callConfiguredAi(
+    buildSpecPrompt(fileName, relativePath, sourceContents, sections, exports),
+  );
+  if (aiResult && aiResult.text.trim()) {
+    body = aiResult.text.trim();
+  } else {
+    body = buildHeuristicSpec(fileName, relativePath, sourceContents, sections, exports);
+  }
+  await writeFile(specUri.fsPath, body, "utf8");
+  return { path: specRelative, preview: body };
 }
 
 async function unstageFile(path: string): Promise<void> {
@@ -736,6 +1276,8 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = VIEW_ID;
 
   private view?: vscode.WebviewView;
+  private openedDiffs: Set<string> = new Set();
+  private tabSubscription?: vscode.Disposable;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -743,9 +1285,64 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
     private readonly context: vscode.ExtensionContext,
   ) {}
 
+  private extractDiffPath(tab: vscode.Tab): string | null {
+    const root = workspaceRoot();
+    if (!root) return null;
+    const input = tab.input as
+      | { modified?: vscode.Uri; original?: vscode.Uri; uri?: vscode.Uri }
+      | undefined;
+    // Staged-file diffs use the `git:` URI scheme on both sides (HEAD vs
+    // index); working-tree diffs have `git:` on the left and `file:` on the
+    // right. Either side carries the same workspace-relative path, so try
+    // both schemes and either side.
+    const candidates = [input?.modified, input?.original, input?.uri].filter(
+      (uri): uri is vscode.Uri => uri instanceof vscode.Uri,
+    );
+    for (const uri of candidates) {
+      if (uri.scheme !== "file" && uri.scheme !== "git") continue;
+      const fsPath = uri.fsPath;
+      if (!fsPath.startsWith(root)) continue;
+      return fsPath.slice(root.length).replace(/^[\\/]+/, "");
+    }
+    return null;
+  }
+
+  private trackTabClose(): void {
+    this.tabSubscription?.dispose();
+    this.tabSubscription = vscode.window.tabGroups.onDidChangeTabs((event) => {
+      let changed = false;
+      for (const tab of event.closed) {
+        const path = this.extractDiffPath(tab);
+        if (path && this.openedDiffs.delete(path)) changed = true;
+      }
+      if (changed) this.broadcastOpenDiffs();
+    });
+    this.context.subscriptions.push(this.tabSubscription);
+  }
+
+  private broadcastOpenDiffs(): void {
+    this.post({ type: "openDiffsUpdate", paths: Array.from(this.openedDiffs) });
+  }
+
+  private async closeDiffForPath(path: string): Promise<void> {
+    const root = workspaceRoot();
+    if (!root) return;
+    const target = workspaceFileUri(path).fsPath;
+    for (const group of vscode.window.tabGroups.all) {
+      for (const tab of group.tabs) {
+        const tabPath = this.extractDiffPath(tab);
+        if (tabPath && workspaceFileUri(tabPath).fsPath === target) {
+          await vscode.window.tabGroups.close(tab);
+        }
+      }
+    }
+    this.openedDiffs.delete(path);
+    this.broadcastOpenDiffs();
+  }
+
   private async postSetupStatus(): Promise<void> {
     const mode = this.currentMode();
-    const aiConfigured =
+    const keyAi =
       (await hasSecret("ANTHROPIC_API_KEY")) ||
       (await hasSecret("OPENAI_API_KEY")) ||
       (await hasSecret("GEMINI_API_KEY"));
@@ -756,11 +1353,16 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
     const root = workspaceRoot();
     const current = root ? await readCurrentModel(root) : null;
     const provider = current?.provider ?? "claude";
+    // For Ollama, "AI configured" means the local server is reachable. For
+    // hosted providers it means a key is saved in the keychain.
+    const aiConfigured =
+      provider === "ollama" ? await isOllamaReachable() : keyAi;
     const ready =
       mode === "native"
         ? true
-        :
-      provider === "ollama" ? platformConfigured : aiConfigured && platformConfigured;
+        : provider === "ollama"
+          ? aiConfigured && platformConfigured
+          : keyAi && platformConfigured;
     this.post({
       type: "setupStatus",
       aiConfigured,
@@ -797,6 +1399,10 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
         void this.handleMessage(message);
       },
     );
+    webviewView.onDidChangeVisibility(() => {
+      if (webviewView.visible) this.postState();
+    });
+    this.trackTabClose();
     this.postState();
   }
 
@@ -871,6 +1477,78 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
         });
         return;
       }
+      case "pushBranch": {
+        await this.runWithStatus("push", async () => {
+          await runShellCommand("git push -u origin HEAD");
+          await this.postRepoStatus();
+        });
+        return;
+      }
+      case "publishReview": {
+        await this.runWithStatus("publishReview", async () => {
+          await runCommand("review", ["--publish"]);
+        });
+        return;
+      }
+      case "openPr": {
+        await this.runWithStatus("openPr", async () => {
+          await runShellCommand("gh pr view --web");
+        });
+        return;
+      }
+      case "previewFix": {
+        await this.runWithStatus("previewFix", async () => {
+          if (!message.issueId) {
+            throw new ExtensionError("previewFix requires an issue id.");
+          }
+          await runCommand("fix", ["--comment", message.issueId, "--preview"]);
+        });
+        return;
+      }
+      case "applyFix": {
+        await this.runWithStatus("applyFix", async () => {
+          if (!message.issueId) {
+            throw new ExtensionError("applyFix requires an issue id.");
+          }
+          await runCommand("fix", ["--comment", message.issueId]);
+          await this.postRepoStatus();
+        });
+        return;
+      }
+      case "pickSpecFile": {
+        await this.runWithStatus("spec", async () => {
+          const picked = await pickRepoFile();
+          if (picked) {
+            this.post({ type: "specFilePicked", path: picked });
+          }
+        });
+        return;
+      }
+      case "generateSpec": {
+        await this.runWithStatus("spec", async () => {
+          if (!message.path) {
+            throw new ExtensionError("generateSpec requires a file path.");
+          }
+          const result = await generateSpecForFile(message.path, message.sections ?? []);
+          this.post({
+            type: "specGenerated",
+            path: result.path,
+            preview: result.preview,
+          });
+        });
+        return;
+      }
+      case "openSpec": {
+        await this.runWithStatus("spec", async () => {
+          if (!message.path) {
+            throw new ExtensionError("openSpec requires a file path.");
+          }
+          const uri = workspaceFileUri(message.path);
+          const doc = await vscode.workspace.openTextDocument(uri);
+          await vscode.window.showTextDocument(doc, { preview: false });
+        });
+        return;
+      }
       case "runReview": {
         await this.runWithStatus("review", async () => {
           if (this.currentMode() === "native") {
@@ -890,7 +1568,19 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
       }
       case "openFileDiff": {
         await this.runWithStatus("workingTree", async () => {
-          await openFileDiff(message.path ?? "");
+          const path = message.path ?? "";
+          if (!path) return;
+          await openFileDiff(path, message.staged === true, message.status ?? "");
+          this.openedDiffs.add(path);
+          this.broadcastOpenDiffs();
+        });
+        return;
+      }
+      case "closeFileDiff": {
+        await this.runWithStatus("workingTree", async () => {
+          const path = message.path ?? "";
+          if (!path) return;
+          await this.closeDiffForPath(path);
         });
         return;
       }
@@ -982,6 +1672,7 @@ export class gitpilotSidebarProvider implements vscode.WebviewViewProvider {
     void this.postModelOptions();
     this.post({ type: "modeUpdate", mode: this.currentMode() });
     void this.postRepoStatus();
+    this.broadcastOpenDiffs();
     const root = workspaceRoot();
     if (!root) return;
     void readCurrentModel(root).then((current) => {
