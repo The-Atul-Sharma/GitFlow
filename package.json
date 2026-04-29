@@ -5,6 +5,7 @@
   "type": "module",
   "name": "gpilot",
   "version": "0.1.1",
+  "license": "MIT",
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
     "@types/minimist": "^1.2.5",
