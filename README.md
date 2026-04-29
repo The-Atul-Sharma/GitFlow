@@ -2,8 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/gpilot.svg)](https://www.npmjs.com/package/gpilot)
 [![npm downloads](https://img.shields.io/npm/dw/gpilot.svg)](https://www.npmjs.com/package/gpilot)
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/atsharma.gpilot)](https://marketplace.visualstudio.com/items?itemName=atsharma.gpilot)
-[![VS Code Installs](https://img.shields.io/visual-studio-marketplace/i/atsharma.gpilot)](https://marketplace.visualstudio.com/items?itemName=atsharma.gpilot)
+[![VS Code Marketplace Version](https://vsmarketplacebadges.dev/version-short/atsharma.gpilot.svg)](https://marketplace.visualstudio.com/items?itemName=atsharma.gpilot)
+[![VS Code Marketplace Installs](https://vsmarketplacebadges.dev/installs-short/atsharma.gpilot.svg)](https://marketplace.visualstudio.com/items?itemName=atsharma.gpilot)
 [![License](https://img.shields.io/npm/l/gpilot)](./LICENSE)
 
 AI-powered **Git workflow automation CLI and VS Code extension**.
