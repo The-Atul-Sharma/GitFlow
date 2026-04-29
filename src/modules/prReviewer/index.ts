@@ -178,58 +178,183 @@ function buildPrompt(diff: string, rules: readonly ReviewRule[]): string {
   const ruleBlock = rules
     .map((r) => `- ${r.id} (${r.severity}): ${r.description}`)
     .join("\n");
+  // Strict prompt designed to survive small / local models (qwen-coder,
+  // deepseek-coder, etc.). Pairing GOOD + BAD examples with numbered hard
+  // rules empirically reduces malformed output (string-only arrays,
+  // wrapper objects, prose acknowledgments) noticeably more than another
+  // "do not" line.
   return (
-    `You are a senior engineer performing a strict code review on a pull request diff.\n\n` +
-    `Output a single JSON array of issues. No code fences, no preface, no commentary outside the JSON.\n` +
-    `If no issues match the rules, return [].\n\n` +
-    `Each issue must be an object with these fields:\n` +
-    `- "file": string — file path (matching the diff "+++ b/<path>" header, without the "b/" prefix)\n` +
-    `- "line": integer — line number in the NEW version of the file\n` +
-    `- "severity": one of "blocker" | "warning" | "info" — must match the rule's severity\n` +
-    `- "comment": string — explain the problem and why it matters\n` +
-    `- "suggestedFix": string (optional) — concrete replacement code or steps\n\n` +
-    `Only flag issues that match one of these rules. Do NOT invent rules of your own.\n\n` +
+    `Output a single JSON array of code-review issues. Nothing else.\n\n` +
+    `STRICT OUTPUT RULES — violating any rule means the response is unusable:\n` +
+    `1. Output is ONE JSON array. NO markdown, NO code fences, NO preface, NO trailing text.\n` +
+    `2. Each element MUST be a JSON object with these EXACT fields:\n` +
+    `   - "file": string — path from the diff "+++ b/<path>" header (no "b/" prefix)\n` +
+    `   - "line": integer (> 0) — line number in the NEW version of the file\n` +
+    `   - "severity": one of "blocker" | "warning" | "info" — match the rule's severity\n` +
+    `   - "comment": string — explain the problem and why it matters\n` +
+    `   - "suggestedFix": string (optional) — concrete replacement code or steps\n` +
+    `3. Elements MUST be objects, NEVER plain strings.\n` +
+    `4. Do NOT wrap the array in another object (no {"issues":[...]} or {"data":[...]}).\n` +
+    `5. If no issues match the rules, return exactly: []\n` +
+    `6. Only flag issues that match one of the rules below. Do NOT invent rules.\n\n` +
+    `GOOD example (this is exactly the shape you must produce):\n` +
+    `[{"file":"src/api/user.ts","line":47,"severity":"blocker","comment":"Unhandled promise rejection in fetchUser()","suggestedFix":"return res.json().catch(handleError)"}]\n\n` +
+    `BAD examples (DO NOT do any of this):\n` +
+    `- ["Issue: missing error handler at user.ts:47"]   ← strings instead of objects\n` +
+    `- {"issues":[{...}]}                               ← wrapped in an object\n` +
+    `- \`\`\`json\\n[...]\\n\`\`\`                      ← code-fenced\n` +
+    `- {"response":"success"}                           ← acknowledgment instead of issues\n` +
+    `- Here are the issues I found:\\n[...]              ← preface\n\n` +
     `Rules:\n${ruleBlock}\n\n` +
     `Diff:\n${truncateDiff(diff)}\n\n` +
-    `Return ONLY the JSON array.`
+    `Now return ONLY the JSON array — start with [ and end with ].`
   );
 }
 
 function stripCodeFence(raw: string): string {
   let text = raw.trim();
+  // Strip ALL ```…``` fences anywhere in the response, not just at the start.
+  // Small models often wrap a valid JSON array inside a fence somewhere in
+  // the middle of explanatory text.
+  const fenceMatch = text.match(/```[a-zA-Z]*\n([\s\S]*?)```/);
+  if (fenceMatch?.[1]) {
+    const innerTrimmed = fenceMatch[1].trim();
+    if (innerTrimmed.startsWith("[") || innerTrimmed.startsWith("{")) {
+      return innerTrimmed;
+    }
+  }
   if (text.startsWith("```")) {
     text = text
       .replace(/^```[a-zA-Z]*\n?/, "")
-      .replace(/```\s*$/, "")
+      .replace(/\n?```\s*$/, "")
       .trim();
   }
   return text;
 }
 
-function extractJsonArray(text: string): string {
+function extractJsonArray(text: string): string | null {
   const start = text.indexOf("[");
   const end = text.lastIndexOf("]");
-  if (start === -1 || end === -1 || end <= start) {
-    throw new PrReviewerError(
-      "AI did not return a JSON array of issues. Re-run, or switch providers/models in gitpilot.config.yml.",
-    );
-  }
+  if (start === -1 || end === -1 || end <= start) return null;
   return text.slice(start, end + 1);
+}
+
+function extractJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  return text.slice(start, end + 1);
+}
+
+const ARRAY_WRAPPER_KEYS = ["issues", "items", "data", "result", "results", "review", "comments"] as const;
+
+function unwrapIssuesArray(parsed: unknown): unknown {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    for (const key of ARRAY_WRAPPER_KEYS) {
+      const value = obj[key];
+      if (Array.isArray(value)) return value;
+    }
+    // Single issue returned as a bare object — wrap it.
+    if (typeof obj["file"] === "string" && (typeof obj["line"] === "number" || typeof obj["line"] === "string")) {
+      return [obj];
+    }
+  }
+  return parsed;
+}
+
+interface RescuedIssue {
+  file?: unknown;
+  line?: unknown;
+  severity?: unknown;
+  comment?: unknown;
+  suggestedFix?: unknown;
+}
+
+function rescueIssue(raw: unknown): RescuedIssue | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  const file =
+    obj["file"] ?? obj["path"] ?? obj["filename"] ?? obj["filePath"];
+  const lineRaw =
+    obj["line"] ?? obj["lineNumber"] ?? obj["line_number"] ?? obj["lineNo"];
+  const line =
+    typeof lineRaw === "string" ? Number.parseInt(lineRaw, 10) : lineRaw;
+  let severity = obj["severity"] ?? obj["level"] ?? obj["type"];
+  if (typeof severity === "string") {
+    const s = severity.toLowerCase();
+    if (s === "error" || s === "critical" || s === "high") severity = "blocker";
+    else if (s === "medium" || s === "warn") severity = "warning";
+    else if (s === "low" || s === "note" || s === "hint") severity = "info";
+    else severity = s;
+  }
+  const comment =
+    obj["comment"] ?? obj["message"] ?? obj["description"] ?? obj["text"];
+  const suggestedFix =
+    obj["suggestedFix"] ?? obj["suggested_fix"] ?? obj["fix"] ?? obj["suggestion"];
+  return { file, line, severity, comment, suggestedFix };
 }
 
 function parseIssues(raw: string): InlineIssue[] {
   const cleaned = stripCodeFence(raw);
-  const json = extractJsonArray(cleaned);
+
+  // Empty / acknowledgment-only response → treat as zero issues so the panel
+  // shows a clean state rather than an error banner.
+  const trimmedLower = cleaned.toLowerCase().trim();
+  if (
+    !trimmedLower ||
+    /^(?:no\s+issues(?:\s+found)?|none|nothing(?:\s+to\s+report)?|all\s+good|ok|success)\.?$/.test(
+      trimmedLower,
+    )
+  ) {
+    return [];
+  }
+
+  // Try JSON array first, then a wrapper object with an array inside.
+  const jsonArray = extractJsonArray(cleaned);
+  const jsonObject = !jsonArray ? extractJsonObject(cleaned) : null;
+  const jsonText = jsonArray ?? jsonObject;
+  if (!jsonText) {
+    throw new PrReviewerError(
+      "AI did not return a JSON array of issues. Re-run, or switch providers/models in gitpilot.config.yml.",
+    );
+  }
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json);
+    parsed = JSON.parse(jsonText);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     throw new PrReviewerError(
       `AI output was not valid JSON (${reason}). Re-run, or switch providers/models in gitpilot.config.yml.`,
     );
   }
-  const result = z.array(inlineIssueSchema).safeParse(parsed);
+
+  const unwrapped = unwrapIssuesArray(parsed);
+  if (!Array.isArray(unwrapped)) {
+    throw new PrReviewerError(
+      `AI output was not a JSON array of issues (got ${typeof unwrapped}). Re-run, or switch providers/models in gitpilot.config.yml.`,
+    );
+  }
+
+  // Drop any plain-string elements (some models summarize each issue as a
+  // sentence instead of an object) — but record so we can warn the user
+  // when *every* element was a string.
+  const objectsOnly = unwrapped.filter(
+    (e) => e !== null && typeof e === "object" && !Array.isArray(e),
+  );
+  if (objectsOnly.length === 0 && unwrapped.length > 0) {
+    throw new PrReviewerError(
+      `AI returned a list of strings instead of issue objects. Re-run, or switch to a stronger model in gitpilot.config.yml.`,
+    );
+  }
+
+  const rescued = objectsOnly
+    .map((e) => rescueIssue(e))
+    .filter((e): e is RescuedIssue => e !== null);
+
+  const result = z.array(inlineIssueSchema).safeParse(rescued);
   if (!result.success) {
     const issue = result.error.issues[0];
     const path = issue?.path.join(".") ?? "";

@@ -107,21 +107,32 @@ function buildPrompt(
         .map((m) => `- ${m}`)
         .join("\n")}\n\n`
     : "";
+  // Strict prompt designed for small / local models (qwen-coder, deepseek-coder,
+  // etc.) that frequently violate output constraints. Pairing a positive
+  // example with an explicit BAD example reduces wrapper / acknowledgment
+  // responses noticeably more than another rule line.
   return (
-    `You are a senior engineer writing a pull request description.\n\n` +
-    `Output a single JSON object with EXACTLY these two string fields: "title" and "body". ` +
-    `Both fields are MANDATORY. Do not omit either. Do not nest them under any other key. ` +
-    `No code fences, no preface, no commentary outside the JSON.\n\n` +
-    `Rules:\n` +
-    `- "title": imperative mood, <= ${TITLE_MAX_LENGTH} chars, no trailing period, no PR number prefix.\n` +
-    `- "body": GitHub-flavored markdown that follows the template below. Replace each placeholder with real content based on the diff. Drop any section that has no content rather than leaving placeholders.\n\n` +
-    `Example of the EXACT shape you must return:\n` +
-    `{"title":"feat(auth): add OAuth2 token refresh","body":"## Summary\\nAdds automatic token refresh.\\n\\n## Changes\\n- Refresh on 401 with backoff"}\n\n` +
-    `Template for the body:\n${template}\n\n` +
+    `Output a single JSON object describing a pull request. Nothing else.\n\n` +
+    `STRICT OUTPUT RULES — violating any rule means the response is unusable:\n` +
+    `1. Output is ONE JSON object on the first line. NO markdown, NO code fences, NO preface.\n` +
+    `2. The JSON must have EXACTLY two top-level string fields: "title" and "body". Both are MANDATORY.\n` +
+    `3. Do NOT nest the fields under another key (no "pr", "data", "result").\n` +
+    `4. Do NOT acknowledge the request ({"response":"success"} is INVALID).\n` +
+    `5. Do NOT add any explanation, commentary, or trailing text after the JSON.\n` +
+    `6. "title": imperative mood, <= ${TITLE_MAX_LENGTH} chars, no trailing period, no PR number prefix.\n` +
+    `7. "body": GitHub-flavored markdown matching the template below. Each section paragraph is a real description, not a placeholder. Drop any section that has no content.\n\n` +
+    `GOOD example (this is exactly the shape you must produce):\n` +
+    `{"title":"feat(auth): add OAuth2 token refresh","body":"## Summary\\nAdds automatic token refresh on 401.\\n\\n## Changes\\n- Refresh tokens with exponential backoff"}\n\n` +
+    `BAD examples (DO NOT do any of this):\n` +
+    `- {"response":"success"}\n` +
+    `- \`\`\`json\\n{"title":"…","body":"…"}\\n\`\`\`\n` +
+    `- Here is the PR description:\\n{"title":"…","body":"…"}\n` +
+    `- {"pr":{"title":"…","body":"…"}}\n\n` +
+    `Template for the body field:\n${template}\n\n` +
     recentBlock +
     `Files changed:\n${formatFiles(files)}\n\n` +
     `Diff:\n${truncateDiff(diff)}\n\n` +
-    `Return ONLY the JSON object — nothing else, no markdown fences.`
+    `Now return ONLY the JSON object.`
   );
 }
 

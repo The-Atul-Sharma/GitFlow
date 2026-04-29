@@ -1104,10 +1104,20 @@ export async function commitWithMessage(message: string): Promise<void> {
   if (!root) {
     throw new ExtensionError("Open a workspace folder before committing.");
   }
-  if (!message.trim()) {
+  const trimmed = message.trim();
+  if (!trimmed) {
     throw new ExtensionError("Commit message is empty.");
   }
-  await execFileAsync("git", ["commit", "-m", message], {
+  // Reject obviously malformed drafts (e.g., a header that ended with `{`
+  // because the model returned half a JSON object). The webview can show
+  // this banner so the user knows to regenerate or edit.
+  const header = trimmed.split("\n", 1)[0] ?? "";
+  if (/[{[]\s*$/.test(header) || header.length < 5) {
+    throw new ExtensionError(
+      `Commit message looks malformed ("${header}"). Edit the textarea or regenerate before committing.`,
+    );
+  }
+  await execFileAsync("git", ["commit", "-m", trimmed], {
     cwd: root,
     maxBuffer: 50 * 1024 * 1024,
   });

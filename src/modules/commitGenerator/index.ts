@@ -149,47 +149,147 @@ function buildPromptWithScope(
         .map((m) => `- ${m}`)
         .join("\n")}\n\n`
     : "";
+  // Strict prompt designed to survive small / local models (qwen-coder,
+  // deepseek-coder, etc.). These models love to wrap output in code fences
+  // and add explanations even when told not to. The negative example below
+  // shows them what NOT to do, which empirically helps more than another
+  // "do not" rule.
+  const exampleScope = requiredScope ?? "auth";
   return (
-    `You are a senior engineer writing a Conventional Commit message.\n\n` +
-    `Rules:\n` +
-    `- First line: <type>(<scope>)?: <subject>\n` +
-    `- Allowed types: ${CONVENTIONAL_TYPES.join(", ")}\n` +
+    `Output a single Conventional Commit message. Nothing else.\n\n` +
+    `STRICT OUTPUT RULES — violating any rule means the response is unusable:\n` +
+    `1. Output is plain text only. NO markdown, NO code fences (no \`\`\`), NO blockquotes.\n` +
+    `2. NO preface ("Here is...", "Sure!", "Of course"). Start with the type.\n` +
+    `3. NO trailing explanation, commentary, or notes after the message.\n` +
+    `4. NO surrounding quotes.\n` +
+    `5. First line format: <type>(<scope>)?: <subject>\n` +
+    `6. Allowed types: ${CONVENTIONAL_TYPES.join(", ")}\n` +
     `${scopeRule}` +
-    `- HARD LIMIT: first line must be <= ${HEADER_MAX_LENGTH} characters\n` +
-    `- If needed, shorten the subject so the first line fits <= ${HEADER_MAX_LENGTH}\n` +
-    `- Subject: imperative mood, lowercase, no trailing period, <= 72 chars\n` +
-    `- Optional body: blank line after header, wrap at 72 chars, explain *why*\n` +
-    `- No code fences, no surrounding quotes, no preface\n\n` +
+    `7. First line MUST be <= ${HEADER_MAX_LENGTH} characters total.\n` +
+    `8. Subject: imperative mood, lowercase, no trailing period, <= 72 chars.\n` +
+    `9. Optional body: one blank line after header, wrap at 72 chars, explain *why*.\n\n` +
+    `GOOD example (this is exactly the shape you must produce):\n` +
+    `feat(${exampleScope}): add token refresh on 401\n\n` +
+    `Refresh tokens silently before the next request to avoid logging the user out.\n\n` +
+    `BAD example (DO NOT do this — wrapping, prefaces, fences, trailing notes):\n` +
+    `Here is the commit message:\n` +
+    `\`\`\`\n` +
+    `feat(${exampleScope}): add token refresh on 401\n` +
+    `\`\`\`\n` +
+    `This commit adds...\n\n` +
     recentBlock +
     `Staged diff:\n${diff}\n\n` +
-    `Return ONLY the commit message.`
+    `Now return ONLY the commit message — start with the type, no fences, no preface, no trailing text.`
   );
+}
+
+// Match a Conventional Commit header at the START of a line (anchored).
+const CONVENTIONAL_HEADER_RE = new RegExp(
+  `^(${CONVENTIONAL_TYPES.join("|")})(\\([^)]+\\))?!?:\\s+\\S.*`,
+  "m",
+);
+
+function extractInnerFencedMessage(text: string): string | null {
+  // qwen-coder / deepseek-coder commonly produce:
+  //   feat(scope): Here is the commit:
+  //   ```plaintext
+  //   feat(scope): real subject
+  //   ```
+  //   Then explanation text...
+  // When that happens, the only trustworthy commit message is what's inside
+  // the fence — the wrapping line is the model's preface and the trailing
+  // text is its commentary.
+  const fenceRe = /```[a-zA-Z]*\n([\s\S]*?)```/;
+  const match = text.match(fenceRe);
+  if (!match || !match[1]) return null;
+  const inner = match[1].trim();
+  if (!inner) return null;
+  // Only prefer the fenced content if it actually starts with a Conventional
+  // Commit header — otherwise the fence is unrelated (e.g., the AI showed a
+  // diff or example).
+  if (CONVENTIONAL_HEADER_RE.test(inner)) return inner;
+  return null;
+}
+
+function stripTrailingProse(message: string): string {
+  // After the header (and optional body), small models often append a
+  // "This commit ..." or "Note: ..." paragraph explaining what they wrote.
+  // The Conventional Commit spec allows a body separated from the header by
+  // a blank line. We keep the header and any body up until the first
+  // paragraph that *itself* looks like prose about the commit, then stop.
+  const lines = message.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const trimmed = line.trim();
+    // Detect explanatory closers and stop including from there on.
+    if (
+      /^(this\s+commit|the\s+(first|message|commit)|note:|explanation:|here['']s\s+why|i\s+(have|hope))/i.test(
+        trimmed,
+      )
+    ) {
+      break;
+    }
+    out.push(line);
+  }
+  return out.join("\n").trimEnd();
 }
 
 function cleanMessage(raw: string): string {
   let text = raw.trim();
-  if (text.startsWith("```")) {
+
+  // 1) If the model wrapped the real message inside a fenced block (with
+  //    surrounding prose), prefer the fenced content.
+  const inner = extractInnerFencedMessage(text);
+  if (inner) {
+    text = inner;
+  } else if (text.startsWith("```")) {
+    // Whole response is a single fenced block — strip the fence wrapper.
     text = text
       .replace(/^```[a-zA-Z]*\n?/, "")
-      .replace(/```$/, "")
+      .replace(/\n?```\s*$/, "")
       .trim();
   }
+
   if (
     (text.startsWith('"') && text.endsWith('"')) ||
     (text.startsWith("'") && text.endsWith("'"))
   ) {
     text = text.slice(1, -1).trim();
   }
-  // Strip conversational prefaces small/local models often add even when told
-  // not to: "Here's the commit message:\n…", "Sure! Here is:\n…", etc.
+
+  // 2) Strip conversational prefaces small/local models often add even when
+  //    told not to: "Here's the commit message:\n…", "Sure! Here is:\n…", etc.
   const prefacePatterns = [
-    /^(?:sure[,!.]?\s*)?here(?:'s|\s+is)\s+(?:the\s+)?(?:commit\s+message|commit|message)[:\s-]*\n+/i,
+    /^(?:sure[,!.]?\s*)?here(?:'s|\s+is)\s+(?:the\s+)?(?:conventional\s+)?(?:commit\s+message|commit|message)[^\n:]*[:\-]?\s*\n+/i,
     /^commit\s+message[:\s-]*\n+/i,
     /^message[:\s-]*\n+/i,
+    /^(?:of\s+course[,!.]?\s*|certainly[,!.]?\s*|absolutely[,!.]?\s*)/i,
   ];
   for (const pattern of prefacePatterns) {
     text = text.replace(pattern, "").trim();
   }
+
+  // 3) If the model started the response with a Conventional header line
+  //    that itself contains "Here is..." (i.e. "feat(scope): Here is the
+  //    commit message based on..."), and there's a real commit header
+  //    anywhere later in the response, prefer the later one.
+  const firstLine = text.split("\n", 1)[0] ?? "";
+  if (
+    /\b(here\s+is|here['']s|based\s+on|the\s+following|note that)\b/i.test(firstLine)
+  ) {
+    const lines = text.split("\n");
+    const realHeaderIdx = lines.findIndex(
+      (line, i) => i > 0 && CONVENTIONAL_HEADER_RE.test(line.trim()),
+    );
+    if (realHeaderIdx !== -1) {
+      text = lines.slice(realHeaderIdx).join("\n").trim();
+    }
+  }
+
+  // 4) Drop trailing explanatory prose ("This commit updates...", etc.).
+  text = stripTrailingProse(text);
+
   return text;
 }
 

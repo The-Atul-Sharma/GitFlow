@@ -279,7 +279,7 @@ To package and install the VS Code extension locally:
 cd src/packages/extension
 npm run build                    # builds webview + extension
 npx @vscode/vsce package         # produces gitpilot-<version>.vsix
-code --install-extension gitpilot-1.0.0.vsix
+code --install-extension gitpilot-{version}.vsix
 ```
 
 After installation:
